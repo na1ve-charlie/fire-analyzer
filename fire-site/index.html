@@ -195,7 +195,7 @@
           <div class="chart-legend">
             <span><i class="legend-line asset-line"></i>年末资产</span>
             <span><i class="legend-line expense-line"></i>当年支出</span>
-            <span><i class="legend-line principal-line"></i>初始本金</span>
+            <span><i class="legend-line principal-line"></i>曲线起点本金</span>
             <small>名义金额 · 年末取现</small>
           </div>
           <div class="chart-insight" id="chartInsight"></div>
@@ -319,6 +319,41 @@
             </div>
           </div>
           <p class="panel-footnote">按月复利折算，月末定投；退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
+        </section>
+
+        <section class="panel workspace-panel" id="workspace">
+          <div class="section-heading">
+            <div><p class="section-kicker">WORKSPACE</p><h2>方案快照与数据</h2></div>
+            <span class="soft-badge" id="snapshotEngineVersion">—</span>
+          </div>
+          <p class="workspace-lead">导出完整方案用于复现和分享；导入数据快照用于查看外部指标的来源与更新时间。</p>
+          <div class="workspace-actions">
+            <button class="button button-ghost" id="exportSnapshot" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v3.5h14V13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              导出方案 JSON
+            </button>
+            <button class="button button-ghost" id="importSnapshotButton" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V2m-4 4 4-4 4 4M3 13v3.5h14V13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              导入方案 JSON
+            </button>
+            <input id="snapshotFileInput" type="file" accept="application/json,.json" hidden>
+          </div>
+          <div class="snapshot-import">
+            <label class="snapshot-label" for="dataSnapshotInput">数据快照 JSON</label>
+            <textarea id="dataSnapshotInput" rows="7" spellcheck="false" placeholder='{"name":"CPI 快照","metrics":[{"metricId":"macro.cn.cpi.yoy","sourceId":"nbs.manual","sourceUrl":"https://data.stats.gov.cn","date":"2026-09-01","fetchedAt":"2026-11-17","value":0.9,"unit":"%"}]}'></textarea>
+            <div class="workspace-actions compact">
+              <button class="button button-ghost" id="validateSnapshot" type="button">校验快照</button>
+              <button class="button button-ghost" id="clearSnapshot" type="button">清除快照</button>
+            </div>
+            <div class="snapshot-status" id="snapshotStatus" hidden></div>
+            <div class="table-wrap" id="snapshotTableWrap" hidden>
+              <table>
+                <thead><tr><th>指标</th><th>数值</th><th>日期</th><th>来源</th><th>采集时间</th></tr></thead>
+                <tbody id="snapshotMetricsRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <p class="panel-footnote">方案快照包含假设、结果、规则版本与审计信息；数据快照只在本地展示，不会自动覆盖用户假设。</p>
         </section>
 
         <section class="method-section" id="method">

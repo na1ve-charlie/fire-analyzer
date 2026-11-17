@@ -2,6 +2,8 @@
 
 import { calculateFirePlan } from "./js/core/fire-engine.js";
 import { evaluateRiskRules } from "./js/core/risk-engine.js";
+import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js";
+import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js";
 
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
@@ -36,6 +38,7 @@ const state = {
 
 let latestResult = null;
 let latestRisk = null;
+let latestSnapshot = null;
 let toastTimer = null;
 let resizeFrame = null;
 const $ = (id) => document.getElementById(id);
@@ -196,6 +199,7 @@ function updateAll() {
   latestResult = result;
   latestRisk = evaluateRiskRules({ fireResult: result });
   renderRisk(latestRisk);
+  setText("snapshotEngineVersion", `${result.engineVersion} · ${latestRisk.riskEngineVersion}`, false);
   const { projection } = result;
   const finalPoint = projection.points[state.years];
   const gap = result.principalGap;
@@ -403,7 +407,7 @@ function updateAll() {
     </tr>
   `).join("");
 
-  renderChart(projection.points, state.principal);
+  renderChart(projection.points, result.chartStart);
 }
 
 function formatEvidenceValue(value, unit) {
@@ -441,6 +445,102 @@ function renderRisk(risk) {
         <small>建议：${card.recommendation}</small>
       </article>
     `).join("");
+}
+
+function setSnapshotStatus(kind, message) {
+  const status = $("snapshotStatus");
+  status.className = `snapshot-status ${kind}`;
+  status.innerHTML = message;
+  status.hidden = !message;
+}
+
+function renderSnapshotMetrics(snapshot) {
+  const rows = snapshot.metrics.map((metric) => `
+    <tr>
+      <td>${metric.metricId}</td>
+      <td>${metric.value} ${metric.unit}</td>
+      <td>${metric.date}</td>
+      <td>${metric.sourceId}</td>
+      <td>${metric.fetchedAt}</td>
+    </tr>
+  `).join("");
+  $("snapshotMetricsRows").innerHTML = rows;
+  $("snapshotTableWrap").hidden = false;
+}
+
+function validateDataSnapshot() {
+  const textarea = $("dataSnapshotInput");
+  const parsed = normalizeManualSnapshot(JSON.parse(textarea.value || "{}"));
+  if (!parsed.valid) {
+    latestSnapshot = null;
+    $("snapshotTableWrap").hidden = true;
+    setSnapshotStatus("error", `<strong>快照校验失败</strong><br>${parsed.errors.map((error) => `· ${error}`).join("<br>")}`);
+    return;
+  }
+  latestSnapshot = parsed.snapshot;
+  renderSnapshotMetrics(latestSnapshot);
+  setSnapshotStatus("ok", `<strong>快照校验通过</strong><br>共 ${latestSnapshot.metrics.length} 条指标，全部只在本地展示。`);
+}
+
+function clearDataSnapshot() {
+  latestSnapshot = null;
+  $("dataSnapshotInput").value = "";
+  $("snapshotMetricsRows").innerHTML = "";
+  $("snapshotTableWrap").hidden = true;
+  $("snapshotStatus").hidden = true;
+}
+
+function downloadSnapshotPayload(payload) {
+  const blob = new Blob(["\ufeff", JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `FIRE方案快照_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportSnapshot() {
+  if (!latestResult || !latestRisk) {
+    showToast("请等待方案计算完成");
+    return;
+  }
+  const payload = createSnapshotPayload({ state, result: latestResult, risk: latestRisk });
+  downloadSnapshotPayload(payload);
+  showToast("方案快照已导出");
+}
+
+function applySnapshotPayload(payload) {
+  const snapshotState = payload.state;
+  Object.keys(DEFAULT_STATE).forEach((key) => {
+    if (key in snapshotState) state[key] = snapshotState[key];
+  });
+  if (Array.isArray(snapshotState.expenses) && snapshotState.expenses.length > 0) {
+    state.expenses = snapshotState.expenses.map((item) => ({
+      ...item,
+      amount: clamp(Number(item.amount) || 0, 0, Number(item.max) || 0)
+    }));
+  }
+  buildExpenseControls();
+  syncControls();
+  updateAll();
+  showToast("方案快照已导入");
+}
+
+function importSnapshotFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const parsed = parseSnapshotPayload(String(reader.result || ""));
+    if (!parsed.valid) {
+      showToast(parsed.errors[0] || "方案快照校验失败");
+      return;
+    }
+    applySnapshotPayload(parsed.value);
+  };
+  reader.onerror = () => showToast("快照文件读取失败");
+  reader.readAsText(file, "utf-8");
 }
 
 function niceMaximum(value) {
@@ -633,11 +733,13 @@ function toggleTheme() {
 function downloadCsv() {
   if (!latestResult) return;
   const rows = [
-    ["年份", "期初资产", "当年投资收益", "当年支出", "实际提取", "年末资产"],
+    ["年份", "期初资产", "当年投资收益", "毛支出", "储备利息抵扣", "净支出", "实际提取", "年末资产"],
     ...latestResult.projection.points.map((point) => [
       point.year,
       Math.round(point.startBalance),
       Math.round(point.investmentReturn),
+      Math.round(point.grossExpense),
+      Math.round(point.reserveOffset),
       Math.round(point.expense),
       Math.round(point.withdrawal),
       Math.round(point.balance)
@@ -686,6 +788,21 @@ $("resetExpenses").addEventListener("click", () => {
 $("resetAll").addEventListener("click", resetAll);
 $("themeToggle").addEventListener("click", toggleTheme);
 $("downloadCsv").addEventListener("click", downloadCsv);
+$("exportSnapshot").addEventListener("click", exportSnapshot);
+$("importSnapshotButton").addEventListener("click", () => $("snapshotFileInput").click());
+$("snapshotFileInput").addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (file) importSnapshotFile(file);
+  event.target.value = "";
+});
+$("validateSnapshot").addEventListener("click", () => {
+  try {
+    validateDataSnapshot();
+  } catch (error) {
+    setSnapshotStatus("error", "快照 JSON 解析失败，请检查格式。");
+  }
+});
+$("clearSnapshot").addEventListener("click", clearDataSnapshot);
 document.querySelectorAll(".scenario-option").forEach((button) => {
   button.addEventListener("click", () => {
     state.scenario = button.dataset.scenario;
@@ -800,13 +917,13 @@ if ("ResizeObserver" in window) {
   const observer = new ResizeObserver(() => {
     window.cancelAnimationFrame(resizeFrame);
     resizeFrame = window.requestAnimationFrame(() => {
-      if (latestResult) renderChart(latestResult.projection.points, state.principal);
+      if (latestResult) renderChart(latestResult.projection.points, latestResult.chartStart);
     });
   });
   observer.observe($("chartWrap"));
 } else {
   window.addEventListener("resize", () => {
-    if (latestResult) renderChart(latestResult.projection.points, state.principal);
+    if (latestResult) renderChart(latestResult.projection.points, latestResult.chartStart);
   });
 }
 
