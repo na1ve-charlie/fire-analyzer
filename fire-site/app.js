@@ -1,5 +1,8 @@
 "use strict";
 
+import { calculateFirePlan } from "./js/core/fire-engine.js";
+import { evaluateRiskRules } from "./js/core/risk-engine.js";
+
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
   { id: "maintenance", name: "房屋维护", icon: "维", amount: 250, max: 2000, color: "#76623a", bg: "#f1ead9" },
@@ -32,6 +35,7 @@ const state = {
 };
 
 let latestResult = null;
+let latestRisk = null;
 let toastTimer = null;
 let resizeFrame = null;
 const $ = (id) => document.getElementById(id);
@@ -183,169 +187,15 @@ function bindPair(rangeId, inputId, stateKey, onUpdate = updateAll) {
   });
 }
 
-function requiredPrincipal(annualExpense, annualReturn, inflation, years) {
-  if (annualExpense <= 0 || years <= 0) return 0;
-  if (Math.abs(annualReturn - inflation) < 1e-10) {
-    return annualExpense * years / (1 + annualReturn);
-  }
-  const ratio = (1 + inflation) / (1 + annualReturn);
-  return annualExpense * (1 - Math.pow(ratio, years)) / (annualReturn - inflation);
-}
-
-function reserveInterestFactor(years, annualReturn) {
-  if (years <= 0) return 0;
-  let factor = 0;
-  for (let year = 1; year <= years; year += 1) {
-    factor += 1 / Math.pow(1 + annualReturn, year);
-  }
-  return factor;
-}
-
-function requiredPrincipalWithReserveInterest(annualExpense, annualReturn, inflation, years, medicalReserve, cashReserve, reserveReturnRate) {
-  const grossPrincipal = requiredPrincipal(annualExpense, annualReturn, inflation, years);
-  const factor = reserveInterestFactor(years, annualReturn);
-  const numerator = grossPrincipal - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve);
-  const denominator = 1 + 0.1 * factor * reserveReturnRate;
-  return Math.max(0, numerator / denominator);
-}
-
-function perpetualPrincipalWithReserveInterest(annualExpense, annualReturn, inflation, medicalReserve, cashReserve, reserveReturnRate) {
-  if (!(annualReturn > inflation)) return null;
-  const grossPrincipal = annualExpense / (annualReturn - inflation);
-  const factor = 1 / annualReturn;
-  const numerator = grossPrincipal - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve);
-  const denominator = 1 + 0.1 * factor * reserveReturnRate;
-  return Math.max(0, numerator / denominator);
-}
-
-function simulateProjection(principal, annualExpense, annualReturn, inflation, years, annualReserveInterest = 0) {
-  const points = [{ year: 0, startBalance: principal, investmentReturn: 0, expense: 0, withdrawal: 0, balance: principal }];
-  let balance = principal;
-  let depletionYear = null;
-  let totalWithdrawals = 0;
-
-  for (let year = 1; year <= years; year += 1) {
-    const startBalance = balance;
-    const investmentReturn = startBalance * annualReturn;
-    const available = startBalance + investmentReturn;
-    const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
-    const reserveOffset = Math.min(grossExpense, Math.max(0, annualReserveInterest));
-    const expense = grossExpense - reserveOffset;
-    const withdrawal = Math.min(available, expense);
-    balance = Math.max(0, available - expense);
-    totalWithdrawals += withdrawal;
-    if (expense > available + 0.01 && depletionYear === null) depletionYear = year;
-    points.push({ year, startBalance, investmentReturn, expense, withdrawal, balance });
-  }
-
-  return { points, depletionYear, totalWithdrawals };
-}
-
-function monthsForReservePlan(target, monthlyHomeSavings, monthlySideSavings, inflation) {
-  if (target <= 0) return 0;
-  if (monthlyHomeSavings <= 0 && monthlySideSavings <= 0) return null;
-  let balance = 0;
-  for (let month = 1; month <= 1200; month += 1) {
-    const yearIndex = Math.floor((month - 1) / 12);
-    const homeAmount = monthlyHomeSavings * Math.pow(1 + inflation, yearIndex);
-    balance += homeAmount + monthlySideSavings;
-    if (balance >= target) return month;
-  }
-  return null;
-}
-
-function futureValueMonthlyDca(monthlyAmount, years, annualReturnRate) {
-  const months = Math.max(0, Math.round(years * 12));
-  if (monthlyAmount <= 0 || months <= 0) return 0;
-  const monthlyRate = Math.pow(1 + annualReturnRate, 1 / 12) - 1;
-  if (Math.abs(monthlyRate) < 1e-12) return monthlyAmount * months;
-  return monthlyAmount * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
-}
-
 function calculate() {
-  const monthly = state.expenses.reduce((sum, item) => sum + item.amount, 0);
-  const annual = monthly * 12;
-  const annualReturn = state.returnRate / 100;
-  const inflation = state.inflationRate / 100;
-  const realReturn = (1 + annualReturn) / (1 + inflation) - 1;
-  const medicalReserve = state.medicalReserve;
-  const cashReserve = monthly * 36;
-  const reserveRate = state.reserveReturnRate / 100;
-  const perpetualReverse = annualReturn > inflation ? annual / (annualReturn - inflation) : null;
-  const reverse = state.scenario === "endowment"
-    ? perpetualPrincipalWithReserveInterest(annual, annualReturn, inflation, medicalReserve, cashReserve, reserveRate)
-    : requiredPrincipalWithReserveInterest(annual, annualReturn, inflation, state.years, medicalReserve, cashReserve, reserveRate);
-  const reverseBase = reverse === null ? null : reverse + medicalReserve + cashReserve;
-  const reverseFull = reverseBase === null ? null : reverseBase * 1.1;
-  const conservativeBase = annual * 40 + medicalReserve + cashReserve;
-  const conservative = conservativeBase * 1.1;
-  let reservePlan = null;
-  let annualReserveInterest = 0;
-  if (reverse !== null && reverseFull !== null) {
-    const reserveTarget = reverseFull - reverse;
-    const reserveSafetyPad = reserveTarget - medicalReserve - cashReserve;
-    const interestBase = medicalReserve + reserveSafetyPad;
-    annualReserveInterest = interestBase * reserveRate;
-    const homeMonthlySavings = monthly;
-    const homeMonths = monthsForReservePlan(reserveTarget, homeMonthlySavings, 0, inflation);
-    const sideMonths = monthsForReservePlan(reserveTarget, 0, state.sideIncomeMonthly, inflation);
-    const combinedMonths = monthsForReservePlan(reserveTarget, homeMonthlySavings, state.sideIncomeMonthly, inflation);
-    reservePlan = {
-      target: reserveTarget,
-      medicalReserve,
-      cashReserve,
-      safetyPad: reserveSafetyPad,
-      reserveReturnRate: reserveRate,
-      interestBase,
-      annualReserveInterest,
-      homeMonths,
-      sideMonths,
-      combinedMonths,
-      sideIncomeMonthly: state.sideIncomeMonthly,
-      homeMonthlySavings,
-      combinedMonthlySavings: homeMonthlySavings + state.sideIncomeMonthly,
-      homeAnnualSavings: annual
-    };
-  }
-
-  const chartStart = state.curveSource === "target" && reverse !== null ? reverse : state.principal;
-  const projection = simulateProjection(chartStart, annual, annualReturn, inflation, state.years, annualReserveInterest);
-  const finalPoint = projection.points[state.years];
-  const realEndBalance = finalPoint.balance / Math.pow(1 + inflation, state.years);
-
-  const dcaMonths = Math.max(0, Math.round(state.dcaYears * 12));
-  const dcaReturnRate = state.dcaReturnRate / 100;
-  const dividendYieldRate = state.dividendYield / 100;
-  const dcaMonthly = state.dcaMonthly;
-  const dcaTotalContributed = dcaMonthly * dcaMonths;
-  const fundValue = futureValueMonthlyDca(dcaMonthly, state.dcaYears, dcaReturnRate);
-  const fundAnnualDividend = fundValue * dividendYieldRate;
-  const fundMonthlyDividend = fundAnnualDividend / 12;
-  const fundScenarios = [
-    { label: "低收益（−2%）", rate: Math.max(0, state.dcaReturnRate - 2) },
-    { label: "当前设置", rate: state.dcaReturnRate },
-    { label: "高收益（+2%）", rate: Math.min(20, state.dcaReturnRate + 2) }
-  ].map((scenario) => {
-    const value = futureValueMonthlyDca(dcaMonthly, state.dcaYears, scenario.rate / 100);
-    return { ...scenario, value, annualDividend: value * dividendYieldRate, monthlyDividend: value * dividendYieldRate / 12 };
-  });
-
-  return {
-    monthly, annual, annualReturn, inflation, realReturn, medicalReserve, cashReserve,
-    perpetualReverse, reverse, reverseBase, reverseFull, conservativeBase, conservative, projection,
-    chartStart, realEndBalance, safetyDifference: reverseFull === null ? null : conservative - reverseFull,
-    reservePlan,
-    dcaMonths, dcaMonthly, dcaTotalContributed, fundValue, fundAnnualDividend, fundMonthlyDividend, fundScenarios,
-    fundCoverage: monthly > 0 ? fundMonthlyDividend / monthly : null,
-    principalGap: reverse === null ? null : state.principal - reverse,
-    principalMultiple: reverse === null || state.principal <= 0 ? null : reverse / state.principal,
-    fullTargetMultiple: reverseFull === null || state.principal <= 0 ? null : reverseFull / state.principal
-  };
+  return calculateFirePlan(state);
 }
 
 function updateAll() {
   const result = calculate();
   latestResult = result;
+  latestRisk = evaluateRiskRules({ fireResult: result });
+  renderRisk(latestRisk);
   const { projection } = result;
   const finalPoint = projection.points[state.years];
   const gap = result.principalGap;
@@ -556,6 +406,43 @@ function updateAll() {
   renderChart(projection.points, state.principal);
 }
 
+function formatEvidenceValue(value, unit) {
+  const numeric = Number(value);
+  if (value === null || value === undefined || !Number.isFinite(numeric)) return "—";
+  if (unit === "CNY") return formatMoney(numeric);
+  if (unit === "%") return `${numeric.toFixed(2)}%`;
+  if (unit === "个月") return `${numeric.toFixed(1)} 个月`;
+  if (unit === "年") return `${numeric} 年`;
+  return `${numeric} ${unit}`.trim();
+}
+
+function renderRisk(risk) {
+  setText("riskEngineVersion", risk.riskEngineVersion, false);
+  setText("riskSummary", risk.triggeredCount === 0
+    ? `已检查 ${risk.totalRules} 条规则，未触发风险提示。`
+    : `已检查 ${risk.totalRules} 条规则，触发 ${risk.triggeredCount} 条风险提示。`, false);
+
+  const triggered = risk.results.filter((item) => item.triggered);
+  $("riskCards").innerHTML = triggered.length === 0
+    ? `<article class="risk-card empty">
+        <div class="risk-card-top"><span>状态</span><h3>未触发规则</h3></div>
+        <p>当前假设未命中 MVP 风险规则。仍请注意这是确定性测算，不是收益承诺。</p>
+      </article>`
+    : triggered.map((card) => `
+      <article class="risk-card severity-${card.severity}">
+        <div class="risk-card-top">
+          <span>${card.severity === "critical" ? "风险" : card.severity === "warning" ? "注意" : "提示"}</span>
+          <h3>${card.title}</h3>
+        </div>
+        <p>${card.message}</p>
+        <div class="risk-evidence">
+          ${card.evidence.map((item) => `<span>${item.label}：${formatEvidenceValue(item.value, item.unit)}</span>`).join("")}
+        </div>
+        <small>建议：${card.recommendation}</small>
+      </article>
+    `).join("");
+}
+
 function niceMaximum(value) {
   if (!Number.isFinite(value) || value <= 0) return 100000;
   const exponent = Math.pow(10, Math.floor(Math.log10(value)));
@@ -758,6 +645,7 @@ function downloadCsv() {
   ];
   const assumptions = [
     ["测算参数", "数值"],
+    ["计算引擎版本", latestResult.engineVersion],
     ["现金流模式", state.scenario === "endowment" ? "金鹅永续（只取收益）" : "细水长流（本金慢慢花）"],
     ["曲线起点", state.curveSource === "target" ? "当前模式反推目标" : "我的本金"],
     ["年化收益率", `${state.returnRate}%`],

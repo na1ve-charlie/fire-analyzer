@@ -232,6 +232,28 @@ tr:last-child td { border-bottom: 0; }
 tr.total-row td { color: var(--ink); background: var(--surface-soft); font-size: 11px; font-weight: 700; }
 tr.subtle-row td { color: var(--muted); }
 
+.risk-panel { padding: 28px; }
+.risk-lead { margin: 0 0 20px; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.risk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.risk-card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease; }
+.risk-card:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: var(--shadow); }
+.risk-card.empty { border-style: dashed; color: var(--muted); background: var(--surface-soft); }
+.risk-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 13px; }
+.risk-card-top span { padding: 3px 7px; border-radius: 20px; color: var(--teal); background: var(--teal-soft); font-size: 8px; font-weight: 650; }
+.risk-card-top h3 { margin: 0; font-size: 12px; font-weight: 650; }
+.risk-card p { margin: 0 0 12px; color: var(--muted); font-size: 9px; line-height: 1.7; }
+.risk-evidence { display: grid; gap: 5px; margin-bottom: 10px; }
+.risk-evidence span { color: var(--ink-soft); font-size: 9px; }
+.risk-card small { color: var(--muted); font-size: 8px; line-height: 1.6; }
+.risk-card.severity-notice { border-color: var(--line-strong); }
+.risk-card.severity-notice .risk-card-top span { color: var(--teal); background: var(--teal-soft); }
+.risk-card.severity-warning { border-color: #d8c48c; }
+.risk-card.severity-warning .risk-card-top span { color: var(--orange); background: var(--orange-soft); }
+.risk-card.severity-critical { border-color: #d8b0a7; background: #fff8f5; }
+.risk-card.severity-critical .risk-card-top span { color: var(--red); background: #f7e7e2; }
+html[data-theme="dark"] .risk-card.severity-critical { border-color: #6a3a30; background: #221411; }
+html[data-theme="dark"] .risk-card.severity-critical .risk-card-top span { color: var(--red); background: #35221a; }
+
 .reserve-panel { padding: 28px; }
 .reserve-lead { margin: 0 0 18px; color: var(--muted); font-size: 11px; line-height: 1.8; }
 .reserve-return-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
@@ -430,6 +452,7 @@ html[data-theme="dark"] .toast { color: var(--ink); background: #e5d5ad; }
   .chart-legend small { width: 100%; margin-left: 0; }
   .target-comparison { grid-template-columns: 1fr; }
   .reserve-options { grid-template-columns: 1fr; }
+  .risk-grid { grid-template-columns: 1fr; }
   .reserve-return-row { align-items: flex-start; flex-wrap: wrap; gap: 8px 10px; }
   .reserve-rate-quick { width: 100%; margin-left: 0; justify-content: flex-start; }
   .medical-tiers { grid-template-columns: 1fr 1fr; }

@@ -1,0 +1,10 @@
+{
+  "name": "fire-planner",
+  "version": "2.0.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "燃点 FIRE Planner：浏览器本地计算的 FIRE 测算与风险检查。",
+  "scripts": {
+    "test": "node --test"
+  }
+}
