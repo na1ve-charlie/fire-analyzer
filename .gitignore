@@ -1,0 +1,10 @@
+# 测试与浏览器缓存
+fire-site/.chrome-*/
+fire-site/*.png
+
+# WorkBuddy 运行时标记
+.wbapp_*.genie
+
+# 系统文件
+Thumbs.db
+.DS_Store

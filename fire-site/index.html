@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="燃点 FIRE 测算台：按支出、收益率与通胀率预测现金流，反推财务自由所需本金。">
+  <title>燃点 · FIRE 测算台</title>
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("fire-theme");
+      document.documentElement.dataset.theme = savedTheme || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    } catch (error) {
+      document.documentElement.dataset.theme = "light";
+    }
+  </script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="燃点 FIRE 首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M18.2 2.8c.7 5.1-3.8 6.8-3.8 10.5 0 1.8 1.1 3.1 2.7 3.8-.2-3.1 2.8-4.7 3.6-7.5 3.3 2.8 5.4 6.1 5.4 10.1 0 5.8-4.4 9.5-10.2 9.5S5.7 25.5 5.7 19.8c0-5.9 4.2-10.9 12.5-17Z" fill="currentColor"/><path d="M15.8 29.2c-3 0-5.1-1.9-5.1-4.7 0-2.5 1.8-4.4 4.8-6.5-.2 2.5 1.3 3.4 2.4 4.1.5-1.1.8-2.1.7-3.3 1.8 1.6 2.6 3.4 2.6 5.5 0 2.9-2.1 4.9-5.4 4.9Z" fill="#fff"/></svg>
+        </span>
+        <span><strong>燃点</strong><small>FIRE PLANNER</small></span>
+      </a>
+      <nav class="header-nav" aria-label="页面导航">
+        <a href="#calculator">测算台</a>
+        <a href="#breakdown">方案拆解</a>
+        <a href="#method">计算口径</a>
+      </nav>
+      <button class="button button-ghost theme-toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 1.8v2M10 16.2v2M1.8 10h2M16.2 10h2M4.2 4.2l1.4 1.4m8.8 8.8 1.4 1.4m0-11.6-1.4 1.4m-8.8 8.8-1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16.7 12.7A7 7 0 0 1 7.3 3.3 7 7 0 1 0 16.7 12.7Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <span id="themeLabel">暗黑</span>
+      </button>
+      <button class="button button-ghost header-reset" id="resetAll" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 6.1A7 7 0 1 1 3 12.4M4.2 6.1V2.8m0 3.3h3.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        恢复默认
+      </button>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero container">
+      <div class="hero-copy">
+        <p class="eyebrow"><span></span> FINANCIAL INDEPENDENCE, RETIRE EARLY</p>
+        <h1>把自由，算成一个<br><em>清晰的数字。</em></h1>
+        <p class="hero-description">调整每一笔支出，让收益与通胀在同一条时间轴上对话。<br>既看见理想的安全边界，也看见真正需要的本金。</p>
+      </div>
+      <div class="hero-formula" aria-label="默认保守方案公式">
+        <div class="formula-top"><span>你的保守方案</span><span class="formula-badge">默认</span></div>
+        <div class="formula-equation">40<span>×</span>年支出 <b>+</b> 36<span>月</span>现金 <b>+</b> 医疗储备</div>
+        <div class="formula-bottom"><span>再增加 10% 安全垫</span><strong id="heroFormulaTotal">¥1,885,510</strong></div>
+      </div>
+    </section>
+
+    <section class="container summary-grid" aria-label="核心测算结果">
+      <article class="summary-card">
+        <div class="summary-label"><span class="summary-dot dot-orange"></span>每月刚性支出</div>
+        <strong class="summary-value" id="monthlyExpense">¥3,225</strong>
+        <p><span id="annualExpense">¥38,700</span> / 年 · <span id="categoryCount">7</span> 个类目</p>
+      </article>
+      <article class="summary-card featured">
+        <div class="summary-label"><span class="summary-dot dot-teal"></span>现金流反推投资本金</div>
+        <strong class="summary-value" id="reverseTarget">—</strong>
+        <p id="reverseTargetDescription">覆盖 <span id="reverseYears">50</span> 年支出，期末余额约为 0</p>
+        <p id="reverseRatioDescription">初始目标 × —</p>
+      </article>
+      <article class="summary-card">
+        <div class="summary-label"><span class="summary-dot dot-navy"></span>你的保守 FIRE 目标</div>
+        <strong class="summary-value" id="conservativeTarget">¥1,885,510</strong>
+        <p>含医疗、现金储备与 10% 安全垫</p>
+      </article>
+      <article class="summary-card">
+        <div class="summary-label"><span class="summary-dot dot-gold"></span>预期本金余量</div>
+        <strong class="summary-value" id="principalGap">—</strong>
+        <p id="principalGapNote">相对现金流反推投资本金</p>
+      </article>
+    </section>
+
+    <section class="container calculator-layout" id="calculator">
+      <aside class="controls-column" aria-label="测算参数">
+        <section class="panel control-panel">
+          <div class="panel-heading">
+            <div><span class="step-number">01</span><h2>每月支出</h2></div>
+            <button class="text-button" id="resetExpenses" type="button">重置支出</button>
+          </div>
+          <div class="expense-total">
+            <span>合计</span>
+            <strong id="expensePanelTotal">¥3,225</strong>
+            <small>/ 月</small>
+          </div>
+          <p class="control-hint">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3v14M10 3v14M14 3v14M3 6h6M8 10h9M3 14h9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            拖动滑杆调整，也可以点击金额直接输入
+          </p>
+          <div class="expense-list" id="expenseList"></div>
+        </section>
+
+        <section class="panel control-panel">
+          <div class="panel-heading"><div><span class="step-number">02</span><h2>收益与时间</h2></div></div>
+          <div class="scenario-switch" role="group" aria-label="现金流模式">
+            <button class="scenario-option active" data-scenario="drawdown" type="button">
+              <span>细水长流</span>
+              <small>本金慢慢花</small>
+            </button>
+            <button class="scenario-option" data-scenario="endowment" type="button">
+              <span>金鹅永续</span>
+              <small>只取收益</small>
+            </button>
+          </div>
+          <div class="assumption-list">
+            <div class="assumption-item">
+              <div class="assumption-label"><label for="returnRate">年化收益率</label><div class="number-suffix"><input id="returnInput" type="number" min="0" max="12" step="0.1" value="4.5" aria-label="年化收益率数值"><span>%</span></div></div>
+              <input class="range" id="returnRate" type="range" min="0" max="12" step="0.1" value="4.5">
+              <div class="range-scale"><span>0%</span><span>12%</span></div>
+            </div>
+            <div class="assumption-item">
+              <div class="assumption-label"><label for="inflationRate">年通胀率</label><div class="number-suffix"><input id="inflationInput" type="number" min="0" max="8" step="0.1" value="2" aria-label="年通胀率数值"><span>%</span></div></div>
+              <input class="range" id="inflationRate" type="range" min="0" max="8" step="0.1" value="2">
+              <div class="range-scale"><span>0%</span><span>8%</span></div>
+            </div>
+            <div class="real-return"><span>扣除通胀后的实际收益率</span><strong id="realReturn">2.45%</strong></div>
+            <div class="assumption-item years-item">
+              <div class="assumption-label"><label for="forecastYears">现金流测算年限</label><div class="number-suffix"><input id="yearsInput" type="number" min="10" max="80" step="1" value="50" aria-label="测算年限数值"><span>年</span></div></div>
+              <input class="range" id="forecastYears" type="range" min="10" max="80" step="1" value="50">
+              <div class="range-scale"><span>10 年</span><span>80 年</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel control-panel principal-panel">
+          <div class="panel-heading"><div><span class="step-number">03</span><h2>预期初始本金</h2></div></div>
+          <label class="principal-input-wrap" for="principalInput">
+            <span>¥</span>
+            <input id="principalInput" type="number" min="0" max="100000000" step="1000" value="1885510">
+          </label>
+          <input class="range principal-range" id="principalRange" type="range" min="0" max="5000000" step="1000" value="1885510">
+          <div class="range-scale"><span>0</span><span>500 万</span></div>
+          <div class="quick-amounts">
+            <button type="button" data-amount="1000000">100 万</button>
+            <button type="button" data-amount="1500000">150 万</button>
+            <button type="button" data-amount="2000000">200 万</button>
+            <button type="button" data-amount="reverse">反推值</button>
+          </div>
+          <p class="panel-footnote">曲线将输入金额视为期初可投资本金。</p>
+        </section>
+
+        <section class="panel control-panel medical-panel">
+          <div class="panel-heading"><div><span class="step-number">04</span><h2>医疗专项储备</h2></div></div>
+          <div class="medical-tiers" role="group" aria-label="医疗储备档位">
+            <button type="button" data-medical-tier="50000"><span>基础型</span><small>5 万～8 万</small></button>
+            <button type="button" data-medical-tier="150000" class="active"><span>稳健型</span><small>10 万～15 万</small></button>
+            <button type="button" data-medical-tier="200000"><span>保守型</span><small>15 万～20 万</small></button>
+            <button type="button" data-medical-tier="300000"><span>高安全边际</span><small>20 万～30 万</small></button>
+          </div>
+          <label class="medical-input-wrap" for="medicalReserveInput">
+            <span>¥</span>
+            <input id="medicalReserveInput" type="number" min="0" max="1000000" step="10000" value="150000" aria-label="医疗专项储备金额">
+          </label>
+          <p class="panel-footnote">适合已持续参加基本医保、无重大长期治疗、单身提前 FIRE 的情况；医保缴费与日常医疗开支另行预算，长期护理资金建议单独规划。</p>
+        </section>
+      </aside>
+
+      <div class="results-column">
+        <section class="panel chart-panel">
+          <div class="chart-header">
+            <div>
+              <div class="title-with-status"><h2>现金流预测</h2><span class="status-badge" id="sustainStatus">测算中</span></div>
+              <p id="chartSubtitle">反推目标路径：本金随支出逐步消耗，期末归零</p>
+            </div>
+            <button class="button button-ghost download-button" id="downloadCsv" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v3.5h14V13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              导出 CSV
+            </button>
+          </div>
+          <div class="chart-metrics">
+            <div><span id="endBalanceLabel">第 50 年末预计资产</span><strong id="endBalance">—</strong></div>
+            <div><span>最后一年净支出</span><strong id="lastYearExpense">—</strong></div>
+            <div><span>累计提取支出</span><strong id="totalWithdrawals">—</strong></div>
+          </div>
+          <div class="curve-source-row">
+            <span>曲线起点</span>
+            <div class="curve-source-switch" role="group" aria-label="曲线起点">
+              <button type="button" data-curve-source="target" class="active">反推目标</button>
+              <button type="button" data-curve-source="principal">我的本金</button>
+            </div>
+            <small id="curveSourceNote">按当前模式的反推目标起算</small>
+          </div>
+          <div class="chart-wrap" id="chartWrap">
+            <svg id="cashflowChart" class="cashflow-chart" role="img" aria-label="现金流预测曲线"></svg>
+            <div class="chart-tooltip" id="chartTooltip" hidden></div>
+          </div>
+          <div class="chart-legend">
+            <span><i class="legend-line asset-line"></i>年末资产</span>
+            <span><i class="legend-line expense-line"></i>当年支出</span>
+            <span><i class="legend-line principal-line"></i>初始本金</span>
+            <small>名义金额 · 年末取现</small>
+          </div>
+          <div class="chart-insight" id="chartInsight"></div>
+        </section>
+
+        <section class="panel comparison-panel" id="breakdown">
+          <div class="section-heading">
+            <div><p class="section-kicker">TARGET COMPARISON</p><h2>两种口径，看见安全空间</h2></div>
+            <span class="soft-badge" id="comparisonYears">50 年现金流模型</span>
+          </div>
+          <div class="target-comparison">
+            <article class="target-block model-target">
+              <div class="target-block-top"><span>现金流反推 · 完整目标</span><small id="modelTargetRatio">覆盖指定期限</small></div>
+              <strong id="reverseFullTarget">—</strong>
+              <p>已计入医疗、现金储备与 10% 安全垫</p>
+              <div class="target-bar"><i id="modelBar"></i></div>
+            </article>
+            <article class="target-block conservative-target">
+              <div class="target-block-top"><span>你的方案 · 保守目标</span><small>40 倍年支出</small></div>
+              <strong id="conservativeFullTarget">¥1,885,510</strong>
+              <p>更长的支出覆盖与更厚的安全边界</p>
+              <div class="target-bar"><i id="conservativeBar"></i></div>
+            </article>
+          </div>
+          <div class="safety-message" id="safetyMessage"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>资金构成</th><th id="modelColumnTitle">现金流反推（50 年）</th><th>你的保守方案</th></tr></thead>
+              <tbody id="breakdownRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel reserve-panel" id="reserve">
+          <div class="section-heading">
+            <div><p class="section-kicker">RESERVE PLAN</p><h2>补充储备要攒多久？</h2></div>
+            <span class="soft-badge" id="reserveModeBadge">细水长流口径</span>
+          </div>
+          <p class="reserve-lead" id="reserveTargetText">达到投资本金后，还需单独准备补充储备。</p>
+          <div class="reserve-return-row">
+            <label class="reserve-return-label" for="reserveReturnRate">FIRE 后储备利率</label>
+            <div class="number-suffix"><input id="reserveReturnRate" type="number" min="0" max="8" step="0.05" value="2.25" aria-label="FIRE 后储备年化利率"><span>%</span></div>
+            <div class="reserve-rate-quick" role="group" aria-label="FIRE 后储备利率快捷档">
+              <button type="button" data-reserve-rate="2">2.0%</button>
+              <button type="button" data-reserve-rate="2.25" class="active">2.25%</button>
+              <button type="button" data-reserve-rate="2.5">2.5%</button>
+            </div>
+          </div>
+          <div class="reserve-layout">
+            <div class="reserve-target">
+              <div class="reserve-target-title">补充储备构成</div>
+              <div class="reserve-rows">
+                <div><span>医疗储备</span><strong id="reserveMedical">¥50,000</strong></div>
+                <div><span>36 个月现金储备</span><strong id="reserveCash">¥116,100</strong></div>
+                <div><span>10% 安全垫</span><strong id="reserveSafetyPad">—</strong></div>
+                <div><span>FIRE 后年利息</span><strong id="reservePostFireInterest">—</strong></div>
+                <div class="reserve-total"><span>补充储备合计</span><strong id="reserveTarget">—</strong></div>
+              </div>
+            </div>
+            <div class="reserve-options">
+              <article class="reserve-card">
+                <div class="reserve-card-top"><span>方式一</span><h3>住家储蓄</h3></div>
+                <strong id="homeDelay">—</strong>
+                <p id="homeDelayDetail">把每年 FIRE 支出预算存下来，随通胀增长。</p>
+              </article>
+              <article class="reserve-card">
+                <div class="reserve-card-top"><span>方式二</span><h3>副业被动收入</h3></div>
+                <label class="side-income" for="sideIncome">
+                  <span>¥</span>
+                  <input id="sideIncome" type="number" min="0" max="1000000" step="100" value="2000" aria-label="副业被动月收入">
+                  <small>元 / 月</small>
+                </label>
+                <strong id="sideDelay">—</strong>
+                <p id="sideDelayDetail">只使用副业收入积累，不动投资本金与投资收益。</p>
+              </article>
+              <article class="reserve-card combined-card">
+                <div class="reserve-card-top"><span>方式三</span><h3>住家 + 副业</h3></div>
+                <strong id="combinedDelay">—</strong>
+                <p id="combinedDelayDetail">同时使用住家储蓄与副业收入，不动投资本金。</p>
+              </article>
+            </div>
+          </div>
+          <div class="reserve-conclusion" id="reserveConclusion"></div>
+          <p class="panel-footnote">储备积累阶段不计息；FIRE 后由医疗储备与 10% 安全垫按设定利率产生利息，用于抵扣当年支出。住家金额随通胀增长，副业收入按输入金额保持不变。</p>
+        </section>
+
+        <section class="panel fund-panel" id="fund">
+          <div class="section-heading">
+            <div><p class="section-kicker">DIVIDEND PLAN</p><h2>红利低波退休金测算</h2></div>
+            <span class="soft-badge">只提取股息</span>
+          </div>
+          <p class="fund-lead">FIRE 后用被动收入按月定投红利低波基金；定投期结束后不卖出本金，只提取股息作为退休现金流。</p>
+          <div class="fund-controls">
+            <label class="fund-field" for="dcaYears"><span>定投年限</span><div class="number-suffix"><input id="dcaYears" type="number" min="1" max="50" step="1" value="10" aria-label="定投年限"><span>年</span></div></label>
+            <label class="fund-field" for="dcaMonthly"><span>定投金额</span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="2000" aria-label="每月定投金额"><span>元 / 月</span></div></label>
+            <label class="fund-field" for="dcaReturnRate"><span>年化收益率</span><div class="number-suffix"><input id="dcaReturnRate" type="number" min="0" max="20" step="0.1" value="6" aria-label="定投年化收益率"><span>%</span></div></label>
+            <label class="fund-field" for="dividendYield"><span>股息率</span><div class="number-suffix"><input id="dividendYield" type="number" min="0" max="15" step="0.1" value="4" aria-label="股息率"><span>%</span></div></label>
+          </div>
+          <div class="fund-results">
+            <article><span>期末基金市值</span><strong id="fundValue">—</strong><p id="fundValueDetail">—</p></article>
+            <article><span>每年股息</span><strong id="fundAnnualDividend">—</strong><p id="fundAnnualDividendDetail">—</p></article>
+            <article><span>每月股息</span><strong id="fundMonthlyDividend">—</strong><p id="fundMonthlyDividendDetail">—</p></article>
+          </div>
+          <div class="fund-scenario">
+            <div class="fund-scenario-title">收益情景对比</div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>情景</th><th>年化收益率</th><th>期末市值</th><th>每月股息</th></tr></thead>
+                <tbody id="fundScenarioRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <p class="panel-footnote">按月复利折算，月末定投；退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
+        </section>
+
+        <section class="method-section" id="method">
+          <div class="section-heading"><div><p class="section-kicker">HOW IT WORKS</p><h2>每一个数字，都有据可循</h2></div></div>
+          <div class="method-grid">
+            <article><span>01</span><h3>支出随通胀增长</h3><p>第 n 年支出 = 当前年支出 × (1 + 通胀率)<sup>n−1</sup>，保留生活成本上升的直接影响。</p></article>
+            <article><span>02</span><h3>组合按年复利</h3><p>每年先获得投资收益，再在年末提取当年支出，形成逐年的资产余额。</p></article>
+            <article><span>03</span><h3>反推最低本金</h3><p>将未来每笔支出折现到期初并求和，使测算期限最后一年的资产余额约等于 0。</p></article>
+          </div>
+          <div class="method-note">
+            <strong>请注意</strong>
+            <p>这是确定性测算，不是收益承诺。结果未计入税费、突发大额支出与收益波动；反推值代表所选年限内的理论最低本金，期限越短，结果通常越低。现金流曲线把输入本金全部视为可投资资产，若需独立保留医疗或现金储备，请相应调低用于曲线测算的本金。</p>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container"><div class="brand footer-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M18.2 2.8c.7 5.1-3.8 6.8-3.8 10.5 0 1.8 1.1 3.1 2.7 3.8-.2-3.1 2.8-4.7 3.6-7.5 3.3 2.8 5.4 6.1 5.4 10.1 0 5.8-4.4 9.5-10.2 9.5S5.7 25.5 5.7 19.8c0-5.9 4.2-10.9 12.5-17Z" fill="currentColor"/></svg></span><span><strong>燃点</strong><small>让选择，建立在清晰之上。</small></span></div><p>所有计算均在浏览器本地完成 · 仅供财务规划参考</p></div>
+  </footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
