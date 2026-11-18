@@ -458,6 +458,7 @@ function updateAll() {
   `).join("");
 
   $("dividendLegend").hidden = !dividendActive || !projection.points.some((point) => point.dividendOffset > 0);
+  $("reserveLegend").hidden = !projection.points.some((point) => point.reserveOffset > 0);
   $("turningLegend").hidden = !projection.turningPoint;
 
   const rows = [
@@ -622,28 +623,36 @@ function renderChart(points, principal, result = null) {
   const wrap = $("chartWrap");
   const tooltip = $("chartTooltip");
   const width = Math.max(320, wrap.clientWidth || 700);
-  const height = window.innerWidth <= 580 ? 290 : 340;
-  const margin = { top: 20, right: 15, bottom: 38, left: width < 430 ? 48 : 60 };
+  const height = window.innerWidth <= 580 ? 310 : 360;
+  const compact = width < 560;
+  // 右轴留给现金流刻度标签
+  const margin = { top: 24, right: compact ? 46 : 58, bottom: 38, left: width < 430 ? 46 : 56 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const years = points.length - 1;
   const dividendOffsets = points.map((point) => point.dividendOffset || 0);
+  const reserveOffsets = points.map((point) => point.reserveOffset || 0);
   const showDividendCurve = Boolean(result?.dividendPlan?.enabled) && dividendOffsets.some((value) => value > 0);
-  const rawMax = Math.max(
-    principal,
-    ...points.map((point) => Math.max(point.balance, point.expense, point.dividendOffset || 0)),
-    1
-  ) * 1.08;
-  const maxValue = niceMaximum(rawMax);
+  const showReserveCurve = reserveOffsets.some((value) => value > 0);
+
+  // 左轴：资产（金色）；右轴：现金流（毛支出/实际提取/抵扣）。两轴独立刻度，避免小额线贴底看不清。
+  const rawAssetMax = Math.max(principal, ...points.map((point) => point.balance), 1) * 1.08;
+  const assetMax = niceMaximum(rawAssetMax);
+  const flowValues = points.flatMap((point) => [
+    point.grossExpense || 0, point.expense || 0, point.withdrawal || 0,
+    point.investmentReturn || 0, point.dividendOffset || 0, point.reserveOffset || 0
+  ]);
+  const flowMax = niceMaximum(Math.max(...flowValues, 1) * 1.08);
+
   const x = (year) => margin.left + (year / years) * plotWidth;
-  const y = (value) => margin.top + (1 - clamp(value / maxValue, 0, 1)) * plotHeight;
-  const zeroY = y(0);
-  const assetPoints = points.map((point) => [x(point.year), y(point.balance)]);
-  const expensePoints = points.slice(1).map((point) => [x(point.year), y(point.expense)]);
-  const dividendPoints = points.slice(1).map((point) => [x(point.year), y(point.dividendOffset || 0)]);
+  const yAsset = (value) => margin.top + (1 - clamp(value / assetMax, 0, 1)) * plotHeight;
+  const yFlow = (value) => margin.top + (1 - clamp(value / flowMax, 0, 1)) * plotHeight;
+  const zeroY = yAsset(0);
+  const assetPoints = points.map((point) => [x(point.year), yAsset(point.balance)]);
   const linePath = (coordinates) => coordinates.map((point, index) => `${index === 0 ? "M" : "L"}${point[0].toFixed(2)},${point[1].toFixed(2)}`).join(" ");
   const assetPath = linePath(assetPoints);
   const areaPath = `${assetPath} L${x(years).toFixed(2)},${zeroY.toFixed(2)} L${x(0).toFixed(2)},${zeroY.toFixed(2)} Z`;
+  const fy = (key) => linePath(points.slice(1).map((point) => [x(point.year), yFlow(point[key] || 0)]));
   const turningPoint = result?.projection?.turningPoint || null;
   const dividendStartYear = result?.dividendPlan?.enabled && result.dividendPlan.startYear !== null
     ? result.dividendPlan.startYear
@@ -664,7 +673,7 @@ function renderChart(points, principal, result = null) {
   let turningMarkup = "";
   if (turningPoint) {
     const turningX = x(turningPoint.year);
-    const turningY = y(turningPoint.balance);
+    const turningY = yAsset(turningPoint.balance);
     const labelAnchor = turningX > width - 118 ? "end" : turningX < 118 ? "start" : "middle";
     const labelX = turningX + (labelAnchor === "start" ? 8 : labelAnchor === "end" ? -8 : 0);
     const labelY = Math.max(margin.top + 24, turningY - 11);
@@ -676,7 +685,8 @@ function renderChart(points, principal, result = null) {
       </g>`;
   }
 
-  const yTicks = Array.from({ length: 6 }, (_, index) => (maxValue / 5) * index);
+  const yTicks = Array.from({ length: 6 }, (_, index) => (assetMax / 5) * index);
+  const flowTicks = Array.from({ length: 6 }, (_, index) => (flowMax / 5) * index);
   const candidateSteps = [5, 10, 20, 50];
   const xStep = candidateSteps.find((step) => years / step <= 5) || 20;
   const xTicks = [];
@@ -692,15 +702,18 @@ function renderChart(points, principal, result = null) {
       </linearGradient>
     </defs>
     <g aria-hidden="true">
-      ${yTicks.map((tick) => `
-        <line class="chart-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}"/>
-        <text class="chart-axis-label" x="${margin.left - 9}" y="${y(tick) + 3}" text-anchor="end">${formatAxis(tick)}</text>
+      ${yTicks.map((tick, index) => `
+        <line class="chart-grid" x1="${margin.left}" y1="${yAsset(tick)}" x2="${width - margin.right}" y2="${yAsset(tick)}"/>
+        <text class="chart-axis-label" x="${margin.left - 8}" y="${yAsset(tick) + 3}" text-anchor="end">${formatAxis(tick)}</text>
+        <text class="chart-axis-label chart-axis-right" x="${width - margin.right + 8}" y="${yFlow(flowTicks[index]) + 3}" text-anchor="start">${formatAxis(flowTicks[index])}</text>
       `).join("")}
       ${xTicks.map((tick) => `<text class="chart-axis-label" x="${x(tick)}" y="${height - 13}" text-anchor="middle">${tick === 0 ? "现在" : `${tick} 年`}</text>`).join("")}
       <path class="chart-area" d="${areaPath}"/>
-      <line class="chart-principal-path" x1="${margin.left}" y1="${y(principal)}" x2="${width - margin.right}" y2="${y(principal)}"/>
-      <path class="chart-expense-path" d="${linePath(expensePoints)}"/>
-      ${showDividendCurve ? `<path class="chart-dividend-path" d="${linePath(dividendPoints)}"/>` : ""}
+      <line class="chart-principal-path" x1="${margin.left}" y1="${yAsset(principal)}" x2="${width - margin.right}" y2="${yAsset(principal)}"/>
+      <path class="chart-gross-path" d="${fy("grossExpense")}"/>
+      ${showReserveCurve ? `<path class="chart-reserve-path" d="${fy("reserveOffset")}"/>` : ""}
+      ${showDividendCurve ? `<path class="chart-dividend-path" d="${fy("dividendOffset")}"/>` : ""}
+      <path class="chart-expense-path" d="${fy("withdrawal")}"/>
       <path class="chart-asset-path" d="${assetPath}"/>
       ${dividendStartMarkup}
       ${turningMarkup}
@@ -730,8 +743,8 @@ function renderChart(points, principal, result = null) {
     const year = clamp(Math.round(((svgX - margin.left) / plotWidth) * years), 0, years);
     const point = points[year];
     const hoverX = x(year);
-    const assetY = y(point.balance);
-    const expenseY = y(point.expense);
+    const assetY = yAsset(point.balance);
+    const expenseY = yFlow(point.withdrawal || 0);
     hover.setAttribute("visibility", "visible");
     hoverLine.setAttribute("x1", hoverX);
     hoverLine.setAttribute("x2", hoverX);
@@ -741,7 +754,23 @@ function renderChart(points, principal, result = null) {
     expenseDot.setAttribute("cy", expenseY);
     expenseDot.setAttribute("visibility", year === 0 ? "hidden" : "visible");
 
-    tooltip.innerHTML = `<strong>${year === 0 ? "期初" : `第 ${year} 年`}</strong><span>年末资产 <b>${formatMoney(point.balance)}</b></span>${year > 0 ? `<span>当年支出 <b>${formatMoney(point.expense)}</b></span><span>投资收益 <b>${formatMoney(point.investmentReturn)}</b></span>${point.dividendOffset > 0 ? `<span>红利抵扣 <b>${formatMoney(point.dividendOffset)}</b></span>` : ""}` : ""}`;
+    if (year === 0) {
+      tooltip.innerHTML = `<strong>期初</strong><span>起始本金 <b>${formatMoney(point.balance)}</b></span>`;
+    } else {
+      const reserveOffset = point.reserveOffset || 0;
+      const dividendOffset = point.dividendOffset || 0;
+      const totalOffset = reserveOffset + dividendOffset;
+      tooltip.innerHTML = `
+        <strong>第 ${year} 年</strong>
+        <span>期初资产 <b>${formatMoney(point.startBalance)}</b></span>
+        <span>投资收益 <b>${formatMoney(point.investmentReturn)}</b></span>
+        <span class="tt-divider">当年毛支出 <b>${formatMoney(point.grossExpense)}</b></span>
+        ${reserveOffset > 0 ? `<span class="tt-offset">储备利息抵扣 <b>−${formatMoney(reserveOffset)}</b></span>` : ""}
+        ${dividendOffset > 0 ? `<span class="tt-offset">红利抵扣 <b>−${formatMoney(dividendOffset)}</b></span>` : ""}
+        <span>实际提取 <b>${formatMoney(point.withdrawal)}</b></span>
+        ${totalOffset > 0 ? `<span class="tt-total">两项抵扣合计 <b>${formatMoney(totalOffset)}</b></span>` : ""}
+        <span class="tt-divider">年末资产 <b>${formatMoney(point.balance)}</b></span>`;
+    }
     tooltip.hidden = false;
     const pixelX = (hoverX / width) * rect.width;
     const pixelY = (Math.min(assetY, year === 0 ? assetY : expenseY) / height) * rect.height;

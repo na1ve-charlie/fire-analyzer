@@ -186,10 +186,13 @@ html[data-theme="dark"] .scenario-option.active { color: #e5c876; background: #2
 .cashflow-chart { width: 100%; height: 340px; overflow: visible; }
 .chart-grid { stroke: var(--line); stroke-width: 1; }
 .chart-axis-label { fill: #91866f; font-family: var(--font); font-size: 9px; }
+.chart-axis-right { fill: var(--orange); opacity: .8; }
 .chart-area { fill: url(#assetGradient); }
 .chart-asset-path { fill: none; stroke: var(--teal); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.chart-expense-path { fill: none; stroke: var(--orange); stroke-width: 1.5; stroke-dasharray: 5 5; stroke-linecap: round; stroke-linejoin: round; }
-.chart-dividend-path { fill: none; stroke: var(--dividend); stroke-width: 1.8; stroke-dasharray: 7 5; stroke-linecap: round; stroke-linejoin: round; }
+.chart-gross-path { fill: none; stroke: #b0835a; stroke-width: 1.4; stroke-dasharray: 2 4; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.chart-expense-path { fill: none; stroke: var(--orange); stroke-width: 1.8; stroke-dasharray: 6 4; stroke-linecap: round; stroke-linejoin: round; }
+.chart-reserve-path { fill: none; stroke: var(--dividend); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.chart-dividend-path { fill: none; stroke: #6a8fa6; stroke-width: 1.8; stroke-dasharray: 7 5; stroke-linecap: round; stroke-linejoin: round; }
 .chart-dividend-start line { stroke: var(--dividend); stroke-width: 1; stroke-dasharray: 2 5; opacity: .75; }
 .chart-dividend-start text { fill: var(--dividend); font-family: var(--font); font-size: 9px; font-weight: 650; }
 .chart-turning line { stroke: var(--turning); stroke-width: 1; stroke-dasharray: 4 4; opacity: .78; }
@@ -199,20 +202,28 @@ html[data-theme="dark"] .scenario-option.active { color: #e5c876; background: #2
 .chart-hover-line { stroke: #b6a984; stroke-width: 1; stroke-dasharray: 3 3; }
 .chart-hover-dot-asset { fill: var(--teal); stroke: #fffdf7; stroke-width: 3; }
 .chart-hover-dot-expense { fill: var(--orange); stroke: #fffdf7; stroke-width: 2; }
-.chart-tooltip { position: absolute; z-index: 5; min-width: 150px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; pointer-events: none; color: var(--ink); background: rgba(255,253,247,.97); box-shadow: 0 8px 24px rgba(65,48,15,.14); font-size: 10px; transform: translate(-50%, -105%); backdrop-filter: blur(8px); }
+.chart-tooltip { position: absolute; z-index: 5; min-width: 200px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; pointer-events: none; color: var(--ink); background: rgba(255,253,247,.97); box-shadow: 0 8px 24px rgba(65,48,15,.14); font-size: 10px; transform: translate(-50%, -105%); backdrop-filter: blur(8px); }
 .chart-tooltip strong { display: block; margin-bottom: 5px; font-size: 11px; }
 .chart-tooltip span { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--muted); line-height: 1.9; }
 .chart-tooltip b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.chart-tooltip span.tt-divider { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.chart-tooltip span.tt-offset { color: var(--teal); }
+.chart-tooltip span.tt-offset b { color: var(--teal); }
+.chart-tooltip span.tt-total { color: var(--teal); font-weight: 600; }
+.chart-tooltip span.tt-total b { color: var(--teal); }
 .chart-legend { display: flex; align-items: center; gap: 18px; color: var(--ink-soft); font-size: 9px; }
 .chart-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .chart-legend small { margin-left: auto; color: var(--muted); font-size: 9px; }
 .legend-line { display: inline-block; width: 17px; height: 2px; border-radius: 2px; }
 .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
-.asset-line { background: var(--teal); }
-.expense-line { height: 1px; background: repeating-linear-gradient(to right, var(--orange) 0 4px, transparent 4px 7px); }
-.dividend-line { background: repeating-linear-gradient(to right, var(--dividend) 0 5px, transparent 5px 8px); }
+.asset-line { background: var(--teal); height: 3px; }
+.expense-line { height: 2px; background: repeating-linear-gradient(to right, var(--orange) 0 6px, transparent 6px 10px); }
+.gross-line { height: 1px; background: repeating-linear-gradient(to right, #b0835a 0 2px, transparent 2px 6px); }
+.reserve-line { height: 2px; background: var(--dividend); }
+.dividend-line { background: repeating-linear-gradient(to right, #6a8fa6 0 5px, transparent 5px 8px); }
 .turning-dot { background: var(--turning); }
 .principal-line { height: 1px; background: repeating-linear-gradient(to right, #a89b80 0 3px, transparent 3px 6px); }
+.axis-tag { margin-left: 3px; padding: 1px 4px; border-radius: 4px; color: var(--muted); background: var(--surface-soft); font-size: 8px; }
 .chart-insight { margin-top: 18px; padding: 12px 14px; border-radius: 9px; color: var(--ink-soft); background: var(--surface-soft); font-size: 10px; line-height: 1.75; transition: background 180ms ease; }
 .chart-insight strong { color: var(--teal); }
 .chart-insight.warning { background: #f7e9e1; }

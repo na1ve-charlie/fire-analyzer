@@ -193,10 +193,12 @@
             <div class="chart-tooltip" id="chartTooltip" hidden></div>
           </div>
           <div class="chart-legend">
-            <span><i class="legend-line asset-line"></i>年末资产</span>
-            <span><i class="legend-line expense-line"></i>当年支出</span>
+            <span><i class="legend-line asset-line"></i>年末资产<span class="axis-tag">左轴</span></span>
+            <span><i class="legend-line principal-line"></i>起点本金</span>
+            <span><i class="legend-line gross-line"></i>毛支出<span class="axis-tag">右轴</span></span>
+            <span><i class="legend-line expense-line"></i>实际提取</span>
+            <span id="reserveLegend" hidden><i class="legend-line reserve-line"></i>储备利息抵扣</span>
             <span id="dividendLegend" hidden><i class="legend-line dividend-line"></i>红利抵扣</span>
-            <span><i class="legend-line principal-line"></i>曲线起点本金</span>
             <span id="turningLegend" hidden><i class="legend-dot turning-dot"></i>现金流拐点</span>
             <small>名义金额 · 年末取现</small>
           </div>
