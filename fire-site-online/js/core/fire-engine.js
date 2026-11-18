@@ -47,53 +47,6 @@ function requiredPrincipal(annualExpense, annualReturn, inflation, years) {
   return annualExpense * (1 - Math.pow(ratio, years)) / (annualReturn - inflation);
 }
 
-function reserveInterestFactor(years, annualReturn) {
-  if (years <= 0) return 0;
-  let factor = 0;
-  for (let year = 1; year <= years; year += 1) {
-    factor += 1 / Math.pow(1 + annualReturn, year);
-  }
-  return factor;
-}
-
-function requiredPrincipalWithReserveInterest(
-  annualExpense,
-  annualReturn,
-  inflation,
-  years,
-  medicalReserve,
-  cashReserve,
-  reserveReturnRate,
-  dividendOffsetPresentValue = 0
-) {
-  const grossPrincipal = requiredPrincipal(annualExpense, annualReturn, inflation, years);
-  const factor = reserveInterestFactor(years, annualReturn);
-  const numerator = grossPrincipal
-    - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve)
-    - dividendOffsetPresentValue;
-  const denominator = 1 + 0.1 * factor * reserveReturnRate;
-  return Math.max(0, numerator / denominator);
-}
-
-function perpetualPrincipalWithReserveInterest(
-  annualExpense,
-  annualReturn,
-  inflation,
-  medicalReserve,
-  cashReserve,
-  reserveReturnRate,
-  dividendOffsetPresentValue = 0
-) {
-  if (!(annualReturn > inflation)) return null;
-  const grossPrincipal = annualExpense / (annualReturn - inflation);
-  const factor = 1 / annualReturn;
-  const numerator = grossPrincipal
-    - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve)
-    - dividendOffsetPresentValue;
-  const denominator = 1 + 0.1 * factor * reserveReturnRate;
-  return Math.max(0, numerator / denominator);
-}
-
 function simulateProjection(
   principal,
   annualExpense,
@@ -147,6 +100,56 @@ function simulateProjection(
   }
 
   return { points, depletionYear, totalWithdrawals };
+}
+
+// 与 reservePlan 完全同一口径：某投资本金对应的储备年利息 =（医疗储备 + 10% 安全垫）× 储备利率。
+function reserveInterestForPrincipal(principal, medicalReserve, cashReserve, reserveRate) {
+  const safetyPad = 0.1 * (principal + medicalReserve + cashReserve);
+  return (medicalReserve + safetyPad) * reserveRate;
+}
+
+// 细水长流反推：用与现金流曲线完全相同的模拟引擎，二分求「全程不破产」的最小投资本金。
+// 因为期末余额随本金单调递增，收敛到不破产临界点即 = 净支出现值，保证期间不破产、期末恰好归零。
+function solveSafeDrawdownPrincipal(annual, annualReturn, inflation, years, medicalReserve, cashReserve, reserveRate, dividendIncomeByYear) {
+  const isBankrupt = (principal) => simulateProjection(
+    principal, annual, annualReturn, inflation, years,
+    reserveInterestForPrincipal(principal, medicalReserve, cashReserve, reserveRate),
+    dividendIncomeByYear
+  ).depletionYear !== null;
+
+  let low = 0;
+  let high = Math.max(annual * years, 1);
+  let guard = 0;
+  while (isBankrupt(high) && guard < 60) { high *= 1.5; guard += 1; }
+  for (let i = 0; i < 70; i += 1) {
+    const mid = (low + high) / 2;
+    if (isBankrupt(mid)) low = mid; else high = mid;
+  }
+  return high;
+}
+
+// 金鹅永续反推：二分求使测算窗内本金实际购买力不减、且全程不破产的最小本金。
+function solveSafeEndowmentPrincipal(annual, annualReturn, inflation, years, medicalReserve, cashReserve, reserveRate, dividendIncomeByYear) {
+  if (!(annualReturn > inflation)) return null;
+  const isSafe = (principal) => {
+    const projection = simulateProjection(
+      principal, annual, annualReturn, inflation, years,
+      reserveInterestForPrincipal(principal, medicalReserve, cashReserve, reserveRate),
+      dividendIncomeByYear
+    );
+    if (projection.depletionYear !== null) return false;
+    const realEnd = projection.points[years].balance / Math.pow(1 + inflation, years);
+    return realEnd >= principal - 1;
+  };
+  let low = 0;
+  let high = annual / (annualReturn - inflation);
+  let guard = 0;
+  while (!isSafe(high) && guard < 60) { high *= 1.5; guard += 1; }
+  for (let i = 0; i < 70; i += 1) {
+    const mid = (low + high) / 2;
+    if (isSafe(mid)) high = mid; else low = mid;
+  }
+  return high;
 }
 
 function findTurningPoint(points) {
@@ -261,34 +264,6 @@ function buildDividendPlan(input, dcaPlan, annualExpense, inflation, annualRetur
   };
 }
 
-function presentValueOfSchedule(values, annualReturn, startIndex = 1) {
-  if (annualReturn <= 0) return 0;
-  return values.reduce((sum, value, year) => (
-    year >= startIndex ? sum + value / Math.pow(1 + annualReturn, year) : sum
-  ), 0);
-}
-
-function calculateDividendOffsetPresentValue(dividendPlan, annualExpense, inflation, annualReturn, years, scenario) {
-  if (!dividendPlan.enabled || dividendPlan.startYear === null) return 0;
-
-  if (scenario !== "endowment" || dividendPlan.mode === "dividendPrincipal") {
-    return presentValueOfSchedule(dividendPlan.dividendOffsetByYear, annualReturn, 1);
-  }
-
-  // 仅股息在金鹅永续口径下按无限期现金流折现；仍用当年支出封顶。
-  if (annualReturn <= 0) return 0;
-  const annualIncome = dividendPlan.annualDividend;
-  let presentValue = 0;
-  const maxYears = dividendPlan.startYear + 2000;
-  for (let year = dividendPlan.startYear; year <= maxYears; year += 1) {
-    const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
-    const offset = Math.min(grossExpense, annualIncome);
-    presentValue += offset / Math.pow(1 + annualReturn, year);
-    if (presentValue > 1e12) break;
-  }
-  return presentValue;
-}
-
 function buildDcaPlan(input, monthlyExpense, inflation) {
   const dcaMonths = Math.max(0, Math.round(input.dcaYears * 12));
   const dcaReturnRate = input.dcaReturnRate / 100;
@@ -351,15 +326,16 @@ export function calculateFirePlan(rawInput = {}) {
   const dividendPlan = buildDividendPlan(input, dcaPlan, annual, inflation, annualReturn, input.years);
 
   const perpetualReverse = annualReturn > inflation ? annual / (annualReturn - inflation) : null;
-  const reverseWithoutDividend = input.scenario === "endowment"
-    ? perpetualPrincipalWithReserveInterest(annual, annualReturn, inflation, medicalReserve, cashReserve, reserveRate)
-    : requiredPrincipalWithReserveInterest(annual, annualReturn, inflation, input.years, medicalReserve, cashReserve, reserveRate);
-  const dividendOffsetPresentValue = reverseWithoutDividend === null
-    ? 0
-    : calculateDividendOffsetPresentValue(dividendPlan, annual, inflation, annualReturn, input.years, input.scenario);
-  const reverse = input.scenario === "endowment"
-    ? perpetualPrincipalWithReserveInterest(annual, annualReturn, inflation, medicalReserve, cashReserve, reserveRate, dividendOffsetPresentValue)
-    : requiredPrincipalWithReserveInterest(annual, annualReturn, inflation, input.years, medicalReserve, cashReserve, reserveRate, dividendOffsetPresentValue);
+  // 反推本金：用与现金流曲线完全相同的模拟引擎求解，保证全程不破产 / 永续购买力不减。
+  // 模拟内部按 min(毛支出 - 储备利息, 红利收入) 逐年计算抵扣，这里只需传入逐年红利收入。
+  const dividendIncomeForReverse = dividendPlan.enabled
+    ? dividendPlan.dividendIncomeByYear
+    : new Array(input.years + 1).fill(0);
+  const solvePrincipal = (incomeTable) => input.scenario === "endowment"
+    ? solveSafeEndowmentPrincipal(annual, annualReturn, inflation, input.years, medicalReserve, cashReserve, reserveRate, incomeTable)
+    : solveSafeDrawdownPrincipal(annual, annualReturn, inflation, input.years, medicalReserve, cashReserve, reserveRate, incomeTable);
+  const reverse = solvePrincipal(dividendIncomeForReverse);
+  const reverseWithoutDividend = solvePrincipal(new Array(input.years + 1).fill(0));
   const dividendReverseSaving = reverseWithoutDividend !== null && reverse !== null
     ? Math.max(0, reverseWithoutDividend - reverse)
     : null;
@@ -435,7 +411,7 @@ export function calculateFirePlan(rawInput = {}) {
     audit: {
       engineVersion: FIRE_ENGINE_VERSION,
       formulas: {
-        requiredCapital: "未来净支出现值；FIRE 后储备利息与红利抵扣按现值抵扣投资本金需求。",
+        requiredCapital: "反推本金用与现金流曲线相同的模拟引擎二分求解：细水长流取全程不破产的最小本金（收敛点即净支出现值，期末恰好归零）；金鹅永续取测算窗内购买力不减的最小本金。储备利息与红利抵扣按模拟口径逐年计入。",
         reserveInterest: "FIRE 后利息 =（医疗储备 + 10% 安全垫）× 储备利率；积累阶段不计息。",
         reserveAccumulation: "住家储蓄按年通胀递增，副业收入保持不变；积累阶段不计息。",
         dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。开启定投通胀调整后，第 y 年月投额 = 基准月投额 ×(1+通胀率)^y。",

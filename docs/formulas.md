@@ -62,37 +62,40 @@ G = AnnualExpense × (1 - ((1 + inflationRate) / (1 + returnRate)) ^ years)
 G = AnnualExpense × years / (1 + returnRate)
 ```
 
-### 3.2 计入 FIRE 后储备利息
+### 3.2 反推本金（模拟求解，保证安全）
 
-安全垫：
+反推本金不再用解析折现公式，而是**用与现金流曲线完全相同的模拟引擎二分求解**，从根上保证反推值与曲线口径一致。
 
-```text
-SafetyPad = 0.1 × (ReversePrincipal + MedicalReserve + CashReserve)
-```
-
-FIRE 后利息基数：
+给定候选本金 P，其对应的 FIRE 后储备利息与曲线同口径：
 
 ```text
-InterestBase = MedicalReserve + SafetyPad
-AnnualReserveInterest = InterestBase × reserveReturnRate
+SafetyPad(P)   = 0.1 × (P + MedicalReserve + CashReserve)
+InterestBase(P)= MedicalReserve + SafetyPad(P)
+AnnualReserveInterest(P) = InterestBase(P) × reserveReturnRate
 ```
 
-有限期限反推本金：
+逐年模拟（与第 2 节现金流完全一致）：
 
 ```text
-AF = Σ 1 / (1 + returnRate) ^ t，t = 1...years
-
-ReversePrincipal =
-  [G - AF × reserveReturnRate × (1.1 × MedicalReserve + 0.1 × CashReserve)]
-  / [1 + 0.1 × AF × reserveReturnRate]
+NetExpense(n) = GrossExpense(n) - ReserveOffset(n) - DividendOffset(n)
+Balance(n)    = max(0, Balance(n-1) × (1 + returnRate) - NetExpense(n))
 ```
 
-金鹅永续模式下：
+期末余额 `Balance(years)` 及「是否曾在某年 Balance 归零」都随 P 单调递增，因此可二分：
+
+- **细水长流（drawdown）**：求使全程不破产的最小 P。收敛点即净支出现值，满足「期间不破产 + 期末恰好归零」。
+- **金鹅永续（endowment）**：在 `returnRate > inflationRate` 时，求使测算窗末实际购买力 `Balance(years) / (1+inflationRate)^years ≥ P`、且全程不破产的最小 P。
 
 ```text
-G = AnnualExpense / (returnRate - inflationRate)
-AF = 1 / returnRate
+lo = 0, hi = 足够大的上界
+重复 70 次：
+  mid = (lo + hi) / 2
+  if 以 mid 模拟后「不安全」: lo = mid
+  else: hi = mid
+ReversePrincipal = hi
 ```
+
+该口径保证：反推目标作为曲线起点时，细水长流全程不破产且终年归零；金鹅永续本金购买力不下降。旧版解析折现会高估红利抵扣（按毛支出封顶，未按扣除储备利息后的余额封顶），导致本金被低估、中途破产，已弃用。
 
 ---
 

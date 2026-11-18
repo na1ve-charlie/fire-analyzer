@@ -140,6 +140,37 @@ test("未启用红利时不计算购买力折算", () => {
   assert.equal(result.dividendPlan.annualIncomeReal, 0);
 });
 
+test("细水长流反推本金保证全程不破产且期末归零（含红利中途加入）", () => {
+  const cases = [
+    { ...baseInput, years: 50, dcaYears: 25, dcaMonthly: 1200, dcaInflationAdjust: true, dividendEnabled: true, dividendMode: "dividendPrincipal", reserveReturnRate: 3.5 },
+    { ...baseInput, years: 40, dividendEnabled: true, dividendMode: "dividendOnly", dcaYears: 10 },
+    { ...baseInput, years: 30, returnRate: 4, inflationRate: 3, dividendEnabled: false }
+  ];
+  for (const input of cases) {
+    const result = calculateFirePlan(input);
+    const points = result.projection.points;
+    assert.equal(result.projection.depletionYear, null, "反推本金不应在任何年份破产");
+    assert.ok(Math.min(...points.map((point) => point.balance)) >= -0.5, "中途余额不应为负");
+    assert.ok(Math.abs(points[points.length - 1].balance) < 1, "期末余额应恰好归零");
+    // 曲线起点就是反推本金，验证两者一致（口径统一）
+    assert.ok(Math.abs(result.chartStart - result.reverse) < 0.01);
+  }
+});
+
+test("金鹅永续反推本金保证测算窗内购买力不减", () => {
+  const cases = [
+    { ...baseInput, scenario: "endowment", returnRate: 5.5 },
+    { ...baseInput, scenario: "endowment", returnRate: 4.5, dividendEnabled: true, dividendMode: "dividendOnly", dcaYears: 10 }
+  ];
+  for (const input of cases) {
+    const result = calculateFirePlan(input);
+    const finalPoint = result.projection.points[input.years];
+    const realEnd = finalPoint.balance / Math.pow(1 + input.inflationRate / 100, input.years);
+    assert.equal(result.projection.depletionYear, null);
+    assert.ok(realEnd >= result.chartStart - 2, "永续本金实际购买力不应下降");
+  }
+});
+
 test("现金流曲线会定位拐点", () => {
   const result = calculateFirePlan(baseInput);
   assert.ok(result.projection.turningPoint);
