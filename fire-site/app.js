@@ -18,7 +18,7 @@ const DEFAULT_EXPENSES = [
 const DEFAULT_STATE = {
   scenario: "drawdown",
   curveSource: "target",
-  returnRate: 4.5,
+  returnRate: 5.5,
   inflationRate: 2,
   years: 50,
   principal: 1885510,
@@ -789,6 +789,15 @@ function syncDividendControls() {
   });
 }
 
+// 仅同步储备利率快捷按钮高亮，不改写输入框（避免输入小数时被中断）。
+function syncReserveRateButtons() {
+  document.querySelectorAll("[data-reserve-rate]").forEach((button) => {
+    const active = Number(button.dataset.reserveRate) === state.reserveReturnRate;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
 function syncControls() {
   syncScenarioButtons();
   syncCurveSourceButtons();
@@ -804,11 +813,7 @@ function syncControls() {
   $("principalInput").value = state.principal;
   $("sideIncome").value = state.sideIncomeMonthly;
   $("reserveReturnRate").value = state.reserveReturnRate;
-  document.querySelectorAll("[data-reserve-rate]").forEach((button) => {
-    const active = Number(button.dataset.reserveRate) === state.reserveReturnRate;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", active ? "true" : "false");
-  });
+  syncReserveRateButtons();
   $("dcaYears").value = state.dcaYears;
   $("dcaMonthly").value = state.dcaMonthly;
   $("dcaReturnRate").value = state.dcaReturnRate;
@@ -957,16 +962,21 @@ sideIncomeInput.addEventListener("change", () => {
 });
 
 const reserveReturnInput = $("reserveReturnRate");
+// 输入过程中只更新状态与按钮高亮，绝不改写输入框，否则 "2." 会被 Number 归一成 2 导致小数无法输入。
 reserveReturnInput.addEventListener("input", () => {
   if (reserveReturnInput.value === "") return;
-  state.reserveReturnRate = clamp(Number(reserveReturnInput.value) || 0, 0, Number(reserveReturnInput.max));
-  syncControls();
+  const parsed = Number(reserveReturnInput.value);
+  if (!Number.isFinite(parsed)) return;
+  state.reserveReturnRate = clamp(parsed, 0, Number(reserveReturnInput.max));
+  syncReserveRateButtons();
   updateAll();
 });
+// 失焦/回车时才规范化显示值（如补零、纠正超出范围）。
 reserveReturnInput.addEventListener("change", () => {
-  state.reserveReturnRate = clamp(Number(reserveReturnInput.value) || 0, 0, Number(reserveReturnInput.max));
+  const parsed = Number(reserveReturnInput.value);
+  state.reserveReturnRate = clamp(Number.isFinite(parsed) ? parsed : 0, 0, Number(reserveReturnInput.max));
   reserveReturnInput.value = state.reserveReturnRate;
-  syncControls();
+  syncReserveRateButtons();
   updateAll();
 });
 document.querySelectorAll("[data-reserve-rate]").forEach((button) => {

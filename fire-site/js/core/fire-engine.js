@@ -20,7 +20,7 @@ function normalizeFireInputs(rawInput = {}) {
   return {
     scenario: rawInput.scenario === "endowment" ? "endowment" : "drawdown",
     curveSource: rawInput.curveSource === "principal" ? "principal" : "target",
-    returnRate: clampNumber(rawInput.returnRate, 0, 12, 4.5),
+    returnRate: clampNumber(rawInput.returnRate, 0, 12, 5.5),
     inflationRate: clampNumber(rawInput.inflationRate, 0, 8, 2),
     years: Math.round(clampNumber(rawInput.years, 10, 80, 50)),
     principal: clampNumber(rawInput.principal, 0, 100000000, 0),

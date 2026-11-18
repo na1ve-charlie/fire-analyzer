@@ -126,7 +126,7 @@ test("异常输入会被安全收敛", () => {
     principal: -100,
     expenses: [{ id: "food", amount: 999999, max: 5000 }]
   });
-  assert.equal(result.assumptions.returnRate, 4.5);
+  assert.equal(result.assumptions.returnRate, 5.5);
   assert.equal(result.assumptions.inflationRate, 8);
   assert.equal(result.assumptions.years, 10);
   assert.equal(result.assumptions.principal, 0);
