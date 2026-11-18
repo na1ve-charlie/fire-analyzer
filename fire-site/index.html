@@ -195,7 +195,9 @@
           <div class="chart-legend">
             <span><i class="legend-line asset-line"></i>年末资产</span>
             <span><i class="legend-line expense-line"></i>当年支出</span>
+            <span id="dividendLegend" hidden><i class="legend-line dividend-line"></i>红利抵扣</span>
             <span><i class="legend-line principal-line"></i>曲线起点本金</span>
+            <span id="turningLegend" hidden><i class="legend-dot turning-dot"></i>现金流拐点</span>
             <small>名义金额 · 年末取现</small>
           </div>
           <div class="chart-insight" id="chartInsight"></div>
@@ -295,9 +297,20 @@
         <section class="panel fund-panel" id="fund">
           <div class="section-heading">
             <div><p class="section-kicker">DIVIDEND PLAN</p><h2>红利低波退休金测算</h2></div>
-            <span class="soft-badge">只提取股息</span>
+            <span class="soft-badge" id="fundModeBadge">未启用</span>
           </div>
-          <p class="fund-lead">FIRE 后用被动收入按月定投红利低波基金；定投期结束后不卖出本金，只提取股息作为退休现金流。</p>
+          <p class="fund-lead" id="fundLead">红利定投未启用；以下测算仅作参考，不会影响反推本金、现金流曲线或支出抵扣。</p>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="红利定投开关">
+              <button type="button" data-dividend-enabled="false" class="active">Disable</button>
+              <button type="button" data-dividend-enabled="true">Enable</button>
+            </div>
+            <div class="fund-toggle-group" role="group" aria-label="红利领取方式">
+              <button type="button" data-dividend-mode="dividendOnly" class="active">仅领取股息</button>
+              <button type="button" data-dividend-mode="dividendPrincipal">股息+本金</button>
+            </div>
+          </div>
+          <p class="fund-start-note" id="dividendStartNote">未启用；启用后将按定投年限从 FIRE 第 10 年开始领取。</p>
           <div class="fund-controls">
             <label class="fund-field" for="dcaYears"><span>定投年限</span><div class="number-suffix"><input id="dcaYears" type="number" min="1" max="50" step="1" value="10" aria-label="定投年限"><span>年</span></div></label>
             <label class="fund-field" for="dcaMonthly"><span>定投金额</span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="2000" aria-label="每月定投金额"><span>元 / 月</span></div></label>

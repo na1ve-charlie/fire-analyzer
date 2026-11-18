@@ -1,6 +1,6 @@
 "use strict";
 
-export const FIRE_ENGINE_VERSION = "fire-engine.2.0.0-alpha.1";
+export const FIRE_ENGINE_VERSION = "fire-engine.2.1.0-alpha.1";
 
 function clampNumber(value, min, max, fallback = 0) {
   const numeric = Number(value);
@@ -31,6 +31,8 @@ function normalizeFireInputs(rawInput = {}) {
     dcaMonthly: clampNumber(rawInput.dcaMonthly, 0, 1000000, 0),
     dcaReturnRate: clampNumber(rawInput.dcaReturnRate, 0, 20, 6),
     dividendYield: clampNumber(rawInput.dividendYield, 0, 15, 4),
+    dividendEnabled: rawInput.dividendEnabled === true,
+    dividendMode: rawInput.dividendMode === "dividendPrincipal" ? "dividendPrincipal" : "dividendOnly",
     expenses: normalizeExpenses(rawInput.expenses)
   };
 }
@@ -60,11 +62,14 @@ function requiredPrincipalWithReserveInterest(
   years,
   medicalReserve,
   cashReserve,
-  reserveReturnRate
+  reserveReturnRate,
+  dividendOffsetPresentValue = 0
 ) {
   const grossPrincipal = requiredPrincipal(annualExpense, annualReturn, inflation, years);
   const factor = reserveInterestFactor(years, annualReturn);
-  const numerator = grossPrincipal - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve);
+  const numerator = grossPrincipal
+    - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve)
+    - dividendOffsetPresentValue;
   const denominator = 1 + 0.1 * factor * reserveReturnRate;
   return Math.max(0, numerator / denominator);
 }
@@ -75,12 +80,15 @@ function perpetualPrincipalWithReserveInterest(
   inflation,
   medicalReserve,
   cashReserve,
-  reserveReturnRate
+  reserveReturnRate,
+  dividendOffsetPresentValue = 0
 ) {
   if (!(annualReturn > inflation)) return null;
   const grossPrincipal = annualExpense / (annualReturn - inflation);
   const factor = 1 / annualReturn;
-  const numerator = grossPrincipal - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve);
+  const numerator = grossPrincipal
+    - factor * reserveReturnRate * (1.1 * medicalReserve + 0.1 * cashReserve)
+    - dividendOffsetPresentValue;
   const denominator = 1 + 0.1 * factor * reserveReturnRate;
   return Math.max(0, numerator / denominator);
 }
@@ -91,7 +99,8 @@ function simulateProjection(
   annualReturn,
   inflation,
   years,
-  annualReserveInterest = 0
+  annualReserveInterest = 0,
+  dividendIncomeByYear = []
 ) {
   const points = [{
     year: 0,
@@ -99,6 +108,8 @@ function simulateProjection(
     investmentReturn: 0,
     grossExpense: 0,
     reserveOffset: 0,
+    dividendIncome: 0,
+    dividendOffset: 0,
     expense: 0,
     withdrawal: 0,
     balance: principal
@@ -113,7 +124,9 @@ function simulateProjection(
     const available = startBalance + investmentReturn;
     const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
     const reserveOffset = Math.min(grossExpense, Math.max(0, annualReserveInterest));
-    const expense = grossExpense - reserveOffset;
+    const dividendIncome = Math.max(0, Number(dividendIncomeByYear[year]) || 0);
+    const dividendOffset = Math.min(grossExpense - reserveOffset, dividendIncome);
+    const expense = grossExpense - reserveOffset - dividendOffset;
     const withdrawal = Math.min(available, expense);
     balance = Math.max(0, available - expense);
     totalWithdrawals += withdrawal;
@@ -124,6 +137,8 @@ function simulateProjection(
       investmentReturn,
       grossExpense,
       reserveOffset,
+      dividendIncome,
+      dividendOffset,
       expense,
       withdrawal,
       balance
@@ -131,6 +146,27 @@ function simulateProjection(
   }
 
   return { points, depletionYear, totalWithdrawals };
+}
+
+function findTurningPoint(points) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1].balance;
+    const current = points[index].balance;
+    const next = points[index + 1].balance;
+    if (current > previous && current > next) {
+      return { year: points[index].year, balance: current, type: "peak" };
+    }
+  }
+
+  for (let index = 1; index < points.length; index += 1) {
+    if (points[index].balance < points[index - 1].balance - 0.01) {
+      return { year: points[index].year, balance: points[index].balance, type: "decline" };
+    }
+  }
+
+  return null;
 }
 
 function monthsForReservePlan(target, monthlyHomeSavings, monthlySideSavings, inflation) {
@@ -152,6 +188,74 @@ function futureValueMonthlyDca(monthlyAmount, years, annualReturnRate) {
   const monthlyRate = Math.pow(1 + annualReturnRate, 1 / 12) - 1;
   if (Math.abs(monthlyRate) < 1e-12) return monthlyAmount * months;
   return monthlyAmount * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
+}
+
+function annuityPaymentForFund(fundValue, annualReturnRate, years) {
+  if (fundValue <= 0 || years <= 0) return 0;
+  if (annualReturnRate <= 0) return fundValue / years;
+  return fundValue * annualReturnRate / (1 - Math.pow(1 + annualReturnRate, -years));
+}
+
+function buildDividendPlan(input, dcaPlan, annualExpense, inflation, annualReturn, years) {
+  const enabled = input.dividendEnabled && input.dcaMonthly > 0 && dcaPlan.fundValue > 0;
+  const startYear = enabled ? Math.min(input.dcaYears, years) : null;
+  const remainingYears = startYear === null ? 0 : years - startYear + 1;
+  const annualDividend = dcaPlan.fundValue * input.dividendYield / 100;
+  const annualPayment = enabled && input.dividendMode === "dividendPrincipal"
+    ? annuityPaymentForFund(dcaPlan.fundValue, input.dcaReturnRate / 100, remainingYears)
+    : 0;
+
+  const dividendIncomeByYear = new Array(years + 1).fill(0);
+  const dividendOffsetByYear = new Array(years + 1).fill(0);
+  if (enabled && startYear !== null) {
+    const annualIncome = input.dividendMode === "dividendPrincipal" ? annualPayment : annualDividend;
+    for (let year = startYear; year <= years; year += 1) {
+      const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
+      dividendIncomeByYear[year] = annualIncome;
+      dividendOffsetByYear[year] = Math.min(grossExpense, annualIncome);
+    }
+  }
+
+  return {
+    enabled,
+    mode: input.dividendMode,
+    startYear,
+    remainingYears,
+    fundValueAtStart: dcaPlan.fundValue,
+    annualDividend,
+    annualPayment,
+    dividendIncomeByYear,
+    dividendOffsetByYear,
+    totalDividendOffset: dividendOffsetByYear.reduce((sum, value) => sum + value, 0)
+  };
+}
+
+function presentValueOfSchedule(values, annualReturn, startIndex = 1) {
+  if (annualReturn <= 0) return 0;
+  return values.reduce((sum, value, year) => (
+    year >= startIndex ? sum + value / Math.pow(1 + annualReturn, year) : sum
+  ), 0);
+}
+
+function calculateDividendOffsetPresentValue(dividendPlan, annualExpense, inflation, annualReturn, years, scenario) {
+  if (!dividendPlan.enabled || dividendPlan.startYear === null) return 0;
+
+  if (scenario !== "endowment" || dividendPlan.mode === "dividendPrincipal") {
+    return presentValueOfSchedule(dividendPlan.dividendOffsetByYear, annualReturn, 1);
+  }
+
+  // 仅股息在金鹅永续口径下按无限期现金流折现；仍用当年支出封顶。
+  if (annualReturn <= 0) return 0;
+  const annualIncome = dividendPlan.annualDividend;
+  let presentValue = 0;
+  const maxYears = dividendPlan.startYear + 2000;
+  for (let year = dividendPlan.startYear; year <= maxYears; year += 1) {
+    const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
+    const offset = Math.min(grossExpense, annualIncome);
+    presentValue += offset / Math.pow(1 + annualReturn, year);
+    if (presentValue > 1e12) break;
+  }
+  return presentValue;
 }
 
 function buildDcaPlan(input, monthlyExpense) {
@@ -201,10 +305,22 @@ export function calculateFirePlan(rawInput = {}) {
   const cashReserve = monthly * 36;
   const reserveRate = input.reserveReturnRate / 100;
 
+  const dcaPlan = buildDcaPlan(input, monthly);
+  const dividendPlan = buildDividendPlan(input, dcaPlan, annual, inflation, annualReturn, input.years);
+
   const perpetualReverse = annualReturn > inflation ? annual / (annualReturn - inflation) : null;
-  const reverse = input.scenario === "endowment"
+  const reverseWithoutDividend = input.scenario === "endowment"
     ? perpetualPrincipalWithReserveInterest(annual, annualReturn, inflation, medicalReserve, cashReserve, reserveRate)
     : requiredPrincipalWithReserveInterest(annual, annualReturn, inflation, input.years, medicalReserve, cashReserve, reserveRate);
+  const dividendOffsetPresentValue = reverseWithoutDividend === null
+    ? 0
+    : calculateDividendOffsetPresentValue(dividendPlan, annual, inflation, annualReturn, input.years, input.scenario);
+  const reverse = input.scenario === "endowment"
+    ? perpetualPrincipalWithReserveInterest(annual, annualReturn, inflation, medicalReserve, cashReserve, reserveRate, dividendOffsetPresentValue)
+    : requiredPrincipalWithReserveInterest(annual, annualReturn, inflation, input.years, medicalReserve, cashReserve, reserveRate, dividendOffsetPresentValue);
+  const dividendReverseSaving = reverseWithoutDividend !== null && reverse !== null
+    ? Math.max(0, reverseWithoutDividend - reverse)
+    : null;
 
   const reverseBase = reverse === null ? null : reverse + medicalReserve + cashReserve;
   const reverseFull = reverseBase === null ? null : reverseBase * 1.1;
@@ -241,10 +357,10 @@ export function calculateFirePlan(rawInput = {}) {
   }
 
   const chartStart = input.curveSource === "target" && reverse !== null ? reverse : input.principal;
-  const projection = simulateProjection(chartStart, annual, annualReturn, inflation, input.years, annualReserveInterest);
+  const projection = simulateProjection(chartStart, annual, annualReturn, inflation, input.years, annualReserveInterest, dividendPlan.dividendIncomeByYear);
+  projection.turningPoint = findTurningPoint(projection.points);
   const finalPoint = projection.points[input.years];
   const realEndBalance = finalPoint.balance / Math.pow(1 + inflation, input.years);
-  const dcaPlan = buildDcaPlan(input, monthly);
 
   return {
     engineVersion: FIRE_ENGINE_VERSION,
@@ -268,6 +384,8 @@ export function calculateFirePlan(rawInput = {}) {
     realEndBalance,
     safetyDifference: reverseFull === null ? null : conservative - reverseFull,
     reservePlan,
+    dividendPlan,
+    dividendReverseSaving,
     ...dcaPlan,
     principalGap: reverse === null ? null : input.principal - reverse,
     principalMultiple: reverse === null || input.principal <= 0 ? null : reverse / input.principal,
@@ -275,10 +393,10 @@ export function calculateFirePlan(rawInput = {}) {
     audit: {
       engineVersion: FIRE_ENGINE_VERSION,
       formulas: {
-        requiredCapital: "未来净支出现值；FIRE 后储备利息按现值抵扣投资本金需求。",
+        requiredCapital: "未来净支出现值；FIRE 后储备利息与红利抵扣按现值抵扣投资本金需求。",
         reserveInterest: "FIRE 后利息 =（医疗储备 + 10% 安全垫）× 储备利率；积累阶段不计息。",
         reserveAccumulation: "住家储蓄按年通胀递增，副业收入保持不变；积累阶段不计息。",
-        dcaDividend: "月末定投按月复利；退休期只提取股息，不卖出本金。"
+        dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。"
       }
     }
   };

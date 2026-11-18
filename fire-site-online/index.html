@@ -195,7 +195,9 @@
           <div class="chart-legend">
             <span><i class="legend-line asset-line"></i>年末资产</span>
             <span><i class="legend-line expense-line"></i>当年支出</span>
-            <span><i class="legend-line principal-line"></i>初始本金</span>
+            <span id="dividendLegend" hidden><i class="legend-line dividend-line"></i>红利抵扣</span>
+            <span><i class="legend-line principal-line"></i>曲线起点本金</span>
+            <span id="turningLegend" hidden><i class="legend-dot turning-dot"></i>现金流拐点</span>
             <small>名义金额 · 年末取现</small>
           </div>
           <div class="chart-insight" id="chartInsight"></div>
@@ -227,6 +229,16 @@
               <tbody id="breakdownRows"></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="panel risk-panel" id="risk">
+          <div class="section-heading">
+            <div><p class="section-kicker">RISK CENTER</p><h2>风险防御中心</h2></div>
+            <span class="soft-badge" id="riskEngineVersion">—</span>
+          </div>
+          <p class="risk-lead" id="riskSummary">正在检查当前假设与储备结构。</p>
+          <div class="risk-grid" id="riskCards"></div>
+          <p class="panel-footnote">规则为确定性检查，不构成投资建议；当前版本不使用 LLM，也不接入实时外部数据。</p>
         </section>
 
         <section class="panel reserve-panel" id="reserve">
@@ -285,9 +297,20 @@
         <section class="panel fund-panel" id="fund">
           <div class="section-heading">
             <div><p class="section-kicker">DIVIDEND PLAN</p><h2>红利低波退休金测算</h2></div>
-            <span class="soft-badge">只提取股息</span>
+            <span class="soft-badge" id="fundModeBadge">未启用</span>
           </div>
-          <p class="fund-lead">FIRE 后用被动收入按月定投红利低波基金；定投期结束后不卖出本金，只提取股息作为退休现金流。</p>
+          <p class="fund-lead" id="fundLead">红利定投未启用；以下测算仅作参考，不会影响反推本金、现金流曲线或支出抵扣。</p>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="红利定投开关">
+              <button type="button" data-dividend-enabled="false" class="active">Disable</button>
+              <button type="button" data-dividend-enabled="true">Enable</button>
+            </div>
+            <div class="fund-toggle-group" role="group" aria-label="红利领取方式">
+              <button type="button" data-dividend-mode="dividendOnly" class="active">仅领取股息</button>
+              <button type="button" data-dividend-mode="dividendPrincipal">股息+本金</button>
+            </div>
+          </div>
+          <p class="fund-start-note" id="dividendStartNote">未启用；启用后将按定投年限从 FIRE 第 10 年开始领取。</p>
           <div class="fund-controls">
             <label class="fund-field" for="dcaYears"><span>定投年限</span><div class="number-suffix"><input id="dcaYears" type="number" min="1" max="50" step="1" value="10" aria-label="定投年限"><span>年</span></div></label>
             <label class="fund-field" for="dcaMonthly"><span>定投金额</span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="2000" aria-label="每月定投金额"><span>元 / 月</span></div></label>
@@ -311,6 +334,41 @@
           <p class="panel-footnote">按月复利折算，月末定投；退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
         </section>
 
+        <section class="panel workspace-panel" id="workspace">
+          <div class="section-heading">
+            <div><p class="section-kicker">WORKSPACE</p><h2>方案快照与数据</h2></div>
+            <span class="soft-badge" id="snapshotEngineVersion">—</span>
+          </div>
+          <p class="workspace-lead">导出完整方案用于复现和分享；导入数据快照用于查看外部指标的来源与更新时间。</p>
+          <div class="workspace-actions">
+            <button class="button button-ghost" id="exportSnapshot" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 13v3.5h14V13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              导出方案 JSON
+            </button>
+            <button class="button button-ghost" id="importSnapshotButton" type="button">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 12V2m-4 4 4-4 4 4M3 13v3.5h14V13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              导入方案 JSON
+            </button>
+            <input id="snapshotFileInput" type="file" accept="application/json,.json" hidden>
+          </div>
+          <div class="snapshot-import">
+            <label class="snapshot-label" for="dataSnapshotInput">数据快照 JSON</label>
+            <textarea id="dataSnapshotInput" rows="7" spellcheck="false" placeholder='{"name":"CPI 快照","metrics":[{"metricId":"macro.cn.cpi.yoy","sourceId":"nbs.manual","sourceUrl":"https://data.stats.gov.cn","date":"2026-09-01","fetchedAt":"2026-11-17","value":0.9,"unit":"%"}]}'></textarea>
+            <div class="workspace-actions compact">
+              <button class="button button-ghost" id="validateSnapshot" type="button">校验快照</button>
+              <button class="button button-ghost" id="clearSnapshot" type="button">清除快照</button>
+            </div>
+            <div class="snapshot-status" id="snapshotStatus" hidden></div>
+            <div class="table-wrap" id="snapshotTableWrap" hidden>
+              <table>
+                <thead><tr><th>指标</th><th>数值</th><th>日期</th><th>来源</th><th>采集时间</th></tr></thead>
+                <tbody id="snapshotMetricsRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <p class="panel-footnote">方案快照包含假设、结果、规则版本与审计信息；数据快照只在本地展示，不会自动覆盖用户假设。</p>
+        </section>
+
         <section class="method-section" id="method">
           <div class="section-heading"><div><p class="section-kicker">HOW IT WORKS</p><h2>每一个数字，都有据可循</h2></div></div>
           <div class="method-grid">
@@ -331,6 +389,6 @@
     <div class="container"><div class="brand footer-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M18.2 2.8c.7 5.1-3.8 6.8-3.8 10.5 0 1.8 1.1 3.1 2.7 3.8-.2-3.1 2.8-4.7 3.6-7.5 3.3 2.8 5.4 6.1 5.4 10.1 0 5.8-4.4 9.5-10.2 9.5S5.7 25.5 5.7 19.8c0-5.9 4.2-10.9 12.5-17Z" fill="currentColor"/></svg></span><span><strong>燃点</strong><small>让选择，建立在清晰之上。</small></span></div><p>所有计算均在浏览器本地完成 · 仅供财务规划参考</p></div>
   </footer>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

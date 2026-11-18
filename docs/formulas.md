@@ -1,8 +1,8 @@
 # 燃点 FIRE Planner 计算口径文档
 
-> 引擎版本：`fire-engine.2.0.0-alpha.1`  
+> 引擎版本：`fire-engine.2.1.0-alpha.1`  
 > 风险规则版本：`risk-engine.v0.1.0`  
-> 最后更新：2026-11-17
+> 最后更新：2026-11-18
 
 ---
 
@@ -18,6 +18,8 @@
 | `reserveReturnRate` | FIRE 后储备账户年化利率 |
 | `sideIncomeMonthly` | 副业被动月收入 |
 | `dcaYears` / `dcaMonthly` / `dcaReturnRate` / `dividendYield` | 红利低波定投与股息假设 |
+| `dividendEnabled` | 红利定投是否启用；未启用时不参与反推本金与现金流曲线 |
+| `dividendMode` | `dividendOnly` 仅领取股息；`dividendPrincipal` 领取股息+本金 |
 
 ---
 
@@ -33,7 +35,9 @@ FIRE 后储备利息用于抵扣毛支出：
 
 ```text
 ReserveOffset(n) = min(GrossExpense(n), AnnualReserveInterest)
-NetExpense(n) = GrossExpense(n) - ReserveOffset(n)
+PreDividendExpense(n) = GrossExpense(n) - ReserveOffset(n)
+DividendOffset(n) = min(PreDividendExpense(n), DividendIncome(n))
+NetExpense(n) = GrossExpense(n) - ReserveOffset(n) - DividendOffset(n)
 ```
 
 储备利息当前按固定名义金额处理，不随通胀自动增长。
@@ -122,7 +126,7 @@ yearIndex = floor((m - 1) / 12)
 
 ---
 
-## 6. 红利低波定投与股息
+## 6. 红利低波定投与领取
 
 按月定投、月末投入、月复利：
 
@@ -133,12 +137,36 @@ FundValue =
   dcaMonthly × ((1 + MonthlyRate) ^ Months - 1) / MonthlyRate
 ```
 
-退休期只提取股息、不卖出本金：
+领取起点：
 
 ```text
-AnnualDividend = FundValue × dividendYield
-MonthlyDividend = AnnualDividend / 12
+DividendStartYear = min(dcaYears, years)
+RemainingYears = years - DividendStartYear + 1
 ```
+
+仅领取股息：
+
+```text
+AnnualIncome = FundValue × dividendYield
+```
+
+领取股息+本金：
+
+```text
+AnnualIncome = FundValue × dcaReturnRate
+              / (1 - (1 + dcaReturnRate) ^ -RemainingYears)
+```
+
+红利收入抵扣当年支出，并按现值参与反推本金：
+
+```text
+DividendOffset(n) = min(GrossExpense(n), AnnualIncome)
+
+PV(DividendOffset) =
+  Σ DividendOffset(n) / (1 + returnRate) ^ n
+```
+
+有限期限反推本金、金鹅永续反推本金都会减去该项现值。金鹅永续 + 仅股息模式按无限期现金流折现；股息+本金模式只在测算期内领取，期末归零。
 
 ---
 
@@ -163,5 +191,5 @@ MonthlyDividend = AnnualDividend / 12
 1. 每次计算输出 `engineVersion`。
 2. 每次风险评估输出 `riskEngineVersion`。
 3. JSON 快照包含 `state`、`result`、`risk`、`engineVersions`。
-4. CSV 包含毛支出、储备利息抵扣、净支出、实际提取和年末资产。
+4. CSV 包含毛支出、储备利息抵扣、红利收入、红利抵扣、净支出、实际提取和年末资产。
 5. 修改公式时必须同步更新本文档与测试。

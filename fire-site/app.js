@@ -28,7 +28,9 @@ const DEFAULT_STATE = {
   dcaYears: 10,
   dcaMonthly: 2000,
   dcaReturnRate: 6,
-  dividendYield: 4
+  dividendYield: 4,
+  dividendEnabled: false,
+  dividendMode: "dividendOnly"
 };
 
 const state = {
@@ -205,6 +207,8 @@ function updateAll() {
   const gap = result.principalGap;
   const isTargetCurve = state.curveSource === "target" && result.reverse !== null;
   const postFireInterest = result.reservePlan ? result.reservePlan.annualReserveInterest : null;
+  const dividendPlan = result.dividendPlan;
+  const dividendActive = Boolean(dividendPlan?.enabled && dividendPlan.startYear !== null);
 
   setText("monthlyExpense", formatMoney(result.monthly));
   setText("expensePanelTotal", formatMoney(result.monthly));
@@ -300,6 +304,10 @@ function updateAll() {
     insight.innerHTML = `当前本金比 ${state.years} 年反推值${gap >= 0 ? "高" : "低"} <strong>${formatMoney(Math.abs(gap))}</strong>，期末预计剩余 <strong>${formatMoney(finalPoint.balance)}</strong>。这里的反推值不含额外医疗、现金储备与安全垫。`;
   }
 
+  if (dividendActive && Number.isFinite(result.dividendReverseSaving) && result.dividendReverseSaving > 1) {
+    insight.innerHTML += ` <span class="dividend-reverse-note">红利抵扣已参与反推：所需投资本金较关闭红利时减少 <strong>${formatMoney(result.dividendReverseSaving)}</strong>。</span>`;
+  }
+
   setText("reverseFullTarget", formatOptionalMoney(result.reverseFull));
   setText("conservativeFullTarget", formatMoney(result.conservative));
   setText("comparisonYears", state.scenario === "endowment" ? "金鹅永续现金流模型" : `${state.years} 年现金流模型`, false);
@@ -377,14 +385,45 @@ function updateAll() {
     $("reserveConclusion").innerHTML = "请先调整收益率与通胀率，使当前模式具备反推本金。";
   }
 
+  const annualIncome = dividendActive && dividendPlan.mode === "dividendPrincipal"
+    ? dividendPlan.annualPayment
+    : result.fundAnnualDividend;
+  const monthlyIncome = annualIncome / 12;
+  const incomeCoverage = result.monthly > 0 ? monthlyIncome / result.monthly : null;
+
+  setText("fundModeBadge", !state.dividendEnabled
+    ? "未启用"
+    : state.dividendMode === "dividendOnly" ? "已启用 · 仅股息" : "已启用 · 股息+本金", false);
+  setText("fundLead", !state.dividendEnabled
+    ? "红利定投未启用；以下测算仅作参考，不会影响反推本金、现金流曲线或支出抵扣。"
+    : state.dividendMode === "dividendOnly"
+      ? "红利定投已启用：定投期结束后从 FIRE 对应年份开始仅领取股息，本金保留并抵扣当年支出。"
+      : "红利定投已启用：定投期结束后从 FIRE 对应年份开始领取股息+本金，按定投收益率年金化，到测算期末归零。", false);
+
+  if (dividendPlan?.startYear !== null && dividendPlan?.startYear !== undefined) {
+    setText("dividendStartNote", dividendPlan.startYear > state.years
+      ? `定投 ${state.dcaYears} 年已超过当前 ${state.years} 年测算期，本周期内暂无领取年份。`
+      : `已按定投年限锁定领取起点：FIRE 第 ${dividendPlan.startYear} 年开始领取。`, false);
+  } else {
+    setText("dividendStartNote", `未启用；启用后将按定投年限从 FIRE 第 ${state.dcaYears} 年开始领取。`, false);
+  }
+
   setText("fundValue", formatMoney(result.fundValue));
   setText("fundValueDetail", `定投 ${state.dcaYears} 年，每月 ${formatMoney(result.dcaMonthly)}，累计投入 ${formatMoney(result.dcaTotalContributed)}。`);
-  setText("fundAnnualDividend", formatMoney(result.fundAnnualDividend));
-  setText("fundAnnualDividendDetail", `按股息率 ${formatPercent(state.dividendYield)} 计算，不卖出本金。`);
-  setText("fundMonthlyDividend", formatMoney(result.fundMonthlyDividend));
-  setText("fundMonthlyDividendDetail", result.fundCoverage === null
-    ? "当前月支出为 0，无法计算覆盖比例。"
-    : `相当于当前月支出的 ${(result.fundCoverage * 100).toFixed(1)}%，只提取股息。`);
+  setText("fundAnnualDividend", formatMoney(dividendActive ? annualIncome : result.fundAnnualDividend));
+  setText("fundAnnualDividendDetail", !dividendActive
+    ? `按股息率 ${formatPercent(state.dividendYield)} 计算，仅供测算参考。`
+    : dividendPlan.mode === "dividendOnly"
+      ? `按股息率 ${formatPercent(state.dividendYield)} 计算，不卖出本金。`
+      : `按 ${formatPercent(state.dcaReturnRate)} 收益率年金化，领取 ${dividendPlan.remainingYears} 年后归零。`);
+  setText("fundMonthlyDividend", formatMoney(dividendActive ? monthlyIncome : result.fundMonthlyDividend));
+  setText("fundMonthlyDividendDetail", !dividendActive
+    ? (result.fundCoverage === null
+      ? "当前月支出为 0，无法计算覆盖比例。"
+      : `相当于当前月支出的 ${(result.fundCoverage * 100).toFixed(1)}%，仅供测算参考。`)
+    : (incomeCoverage === null
+      ? "当前月支出为 0，无法计算覆盖比例。"
+      : `相当于当前月支出的 ${(incomeCoverage * 100).toFixed(1)}%，${dividendPlan.mode === "dividendOnly" ? "只提取股息" : "领取股息+本金"}。`));
   $("fundScenarioRows").innerHTML = result.fundScenarios.map((scenario) => `
     <tr>
       <td>${scenario.label}</td>
@@ -393,6 +432,9 @@ function updateAll() {
       <td>${formatMoney(scenario.monthlyDividend)}</td>
     </tr>
   `).join("");
+
+  $("dividendLegend").hidden = !dividendActive || !projection.points.some((point) => point.dividendOffset > 0);
+  $("turningLegend").hidden = !projection.turningPoint;
 
   const rows = [
     { label: state.scenario === "endowment" ? "永续投资本金" : "投资本金 / 40 倍年支出", model: result.reverse, conservative: result.annual * 40 },
@@ -407,7 +449,7 @@ function updateAll() {
     </tr>
   `).join("");
 
-  renderChart(projection.points, result.chartStart);
+  renderChart(projection.points, result.chartStart, result);
 }
 
 function formatEvidenceValue(value, unit) {
@@ -551,7 +593,7 @@ function niceMaximum(value) {
   return niceFraction * exponent;
 }
 
-function renderChart(points, principal) {
+function renderChart(points, principal, result = null) {
   const svg = $("cashflowChart");
   const wrap = $("chartWrap");
   const tooltip = $("chartTooltip");
@@ -561,16 +603,54 @@ function renderChart(points, principal) {
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const years = points.length - 1;
-  const rawMax = Math.max(principal, ...points.map((point) => Math.max(point.balance, point.expense)), 1) * 1.08;
+  const dividendOffsets = points.map((point) => point.dividendOffset || 0);
+  const showDividendCurve = Boolean(result?.dividendPlan?.enabled) && dividendOffsets.some((value) => value > 0);
+  const rawMax = Math.max(
+    principal,
+    ...points.map((point) => Math.max(point.balance, point.expense, point.dividendOffset || 0)),
+    1
+  ) * 1.08;
   const maxValue = niceMaximum(rawMax);
   const x = (year) => margin.left + (year / years) * plotWidth;
   const y = (value) => margin.top + (1 - clamp(value / maxValue, 0, 1)) * plotHeight;
   const zeroY = y(0);
   const assetPoints = points.map((point) => [x(point.year), y(point.balance)]);
   const expensePoints = points.slice(1).map((point) => [x(point.year), y(point.expense)]);
+  const dividendPoints = points.slice(1).map((point) => [x(point.year), y(point.dividendOffset || 0)]);
   const linePath = (coordinates) => coordinates.map((point, index) => `${index === 0 ? "M" : "L"}${point[0].toFixed(2)},${point[1].toFixed(2)}`).join(" ");
   const assetPath = linePath(assetPoints);
   const areaPath = `${assetPath} L${x(years).toFixed(2)},${zeroY.toFixed(2)} L${x(0).toFixed(2)},${zeroY.toFixed(2)} Z`;
+  const turningPoint = result?.projection?.turningPoint || null;
+  const dividendStartYear = result?.dividendPlan?.enabled && result.dividendPlan.startYear !== null
+    ? result.dividendPlan.startYear
+    : null;
+
+  let dividendStartMarkup = "";
+  if (dividendStartYear !== null && dividendStartYear <= years) {
+    const startX = x(dividendStartYear);
+    const labelAnchor = startX > width - 92 ? "end" : "start";
+    const labelX = startX + (labelAnchor === "start" ? 7 : -7);
+    dividendStartMarkup = `
+      <g class="chart-dividend-start">
+        <line x1="${startX.toFixed(2)}" y1="${margin.top}" x2="${startX.toFixed(2)}" y2="${zeroY.toFixed(2)}"/>
+        <text x="${labelX.toFixed(2)}" y="${margin.top + 10}" text-anchor="${labelAnchor}">领取起点</text>
+      </g>`;
+  }
+
+  let turningMarkup = "";
+  if (turningPoint) {
+    const turningX = x(turningPoint.year);
+    const turningY = y(turningPoint.balance);
+    const labelAnchor = turningX > width - 118 ? "end" : turningX < 118 ? "start" : "middle";
+    const labelX = turningX + (labelAnchor === "start" ? 8 : labelAnchor === "end" ? -8 : 0);
+    const labelY = Math.max(margin.top + 24, turningY - 11);
+    turningMarkup = `
+      <g class="chart-turning">
+        <line x1="${turningX.toFixed(2)}" y1="${margin.top}" x2="${turningX.toFixed(2)}" y2="${zeroY.toFixed(2)}"/>
+        <circle cx="${turningX.toFixed(2)}" cy="${turningY.toFixed(2)}" r="4.5"/>
+        <text x="${labelX.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="${labelAnchor}">拐点 · 第 ${turningPoint.year} 年</text>
+      </g>`;
+  }
 
   const yTicks = Array.from({ length: 6 }, (_, index) => (maxValue / 5) * index);
   const candidateSteps = [5, 10, 20, 50];
@@ -596,7 +676,10 @@ function renderChart(points, principal) {
       <path class="chart-area" d="${areaPath}"/>
       <line class="chart-principal-path" x1="${margin.left}" y1="${y(principal)}" x2="${width - margin.right}" y2="${y(principal)}"/>
       <path class="chart-expense-path" d="${linePath(expensePoints)}"/>
+      ${showDividendCurve ? `<path class="chart-dividend-path" d="${linePath(dividendPoints)}"/>` : ""}
       <path class="chart-asset-path" d="${assetPath}"/>
+      ${dividendStartMarkup}
+      ${turningMarkup}
       <g id="chartHover" visibility="hidden">
         <line id="chartHoverLine" class="chart-hover-line" y1="${margin.top}" y2="${zeroY}"/>
         <circle id="chartAssetDot" class="chart-hover-dot-asset" r="4.5"/>
@@ -634,7 +717,7 @@ function renderChart(points, principal) {
     expenseDot.setAttribute("cy", expenseY);
     expenseDot.setAttribute("visibility", year === 0 ? "hidden" : "visible");
 
-    tooltip.innerHTML = `<strong>${year === 0 ? "期初" : `第 ${year} 年`}</strong><span>年末资产 <b>${formatMoney(point.balance)}</b></span>${year > 0 ? `<span>当年支出 <b>${formatMoney(point.expense)}</b></span><span>投资收益 <b>${formatMoney(point.investmentReturn)}</b></span>` : ""}`;
+    tooltip.innerHTML = `<strong>${year === 0 ? "期初" : `第 ${year} 年`}</strong><span>年末资产 <b>${formatMoney(point.balance)}</b></span>${year > 0 ? `<span>当年支出 <b>${formatMoney(point.expense)}</b></span><span>投资收益 <b>${formatMoney(point.investmentReturn)}</b></span>${point.dividendOffset > 0 ? `<span>红利抵扣 <b>${formatMoney(point.dividendOffset)}</b></span>` : ""}` : ""}`;
     tooltip.hidden = false;
     const pixelX = (hoverX / width) * rect.width;
     const pixelY = (Math.min(assetY, year === 0 ? assetY : expenseY) / height) * rect.height;
@@ -669,10 +752,24 @@ function syncMedicalControls() {
   $("medicalReserveInput").value = state.medicalReserve;
 }
 
+function syncDividendControls() {
+  document.querySelectorAll("[data-dividend-enabled]").forEach((button) => {
+    const active = (button.dataset.dividendEnabled === "true") === state.dividendEnabled;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-dividend-mode]").forEach((button) => {
+    const active = button.dataset.dividendMode === state.dividendMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
 function syncControls() {
   syncScenarioButtons();
   syncCurveSourceButtons();
   syncMedicalControls();
+  syncDividendControls();
   $("returnRate").value = state.returnRate;
   $("returnInput").value = state.returnRate;
   $("inflationRate").value = state.inflationRate;
@@ -733,13 +830,15 @@ function toggleTheme() {
 function downloadCsv() {
   if (!latestResult) return;
   const rows = [
-    ["年份", "期初资产", "当年投资收益", "毛支出", "储备利息抵扣", "净支出", "实际提取", "年末资产"],
+    ["年份", "期初资产", "当年投资收益", "毛支出", "储备利息抵扣", "红利收入", "红利抵扣", "净支出", "实际提取", "年末资产"],
     ...latestResult.projection.points.map((point) => [
       point.year,
       Math.round(point.startBalance),
       Math.round(point.investmentReturn),
       Math.round(point.grossExpense),
       Math.round(point.reserveOffset),
+      Math.round(point.dividendIncome || 0),
+      Math.round(point.dividendOffset || 0),
       Math.round(point.expense),
       Math.round(point.withdrawal),
       Math.round(point.balance)
@@ -758,6 +857,9 @@ function downloadCsv() {
     ["FIRE后储备利率", `${state.reserveReturnRate}%`],
     ["副业被动月收入", state.sideIncomeMonthly],
     ["红利低波定投", `${state.dcaYears}年 / ${state.dcaMonthly}元每月 / ${state.dcaReturnRate}%收益 / ${state.dividendYield}%股息`],
+    ["红利定投状态", state.dividendEnabled ? "已启用" : "未启用"],
+    ["红利领取模式", state.dividendMode === "dividendOnly" ? "仅领取股息" : "领取股息+本金"],
+    ["红利领取起点", latestResult.dividendPlan?.startYear === null || latestResult.dividendPlan?.startYear === undefined ? "未启用/不在测算期内" : `FIRE第${latestResult.dividendPlan.startYear}年`],
     []
   ];
   const csv = [...assumptions, ...rows].map((row) => row.join(",")).join("\r\n");
@@ -898,6 +1000,22 @@ medicalReserveInput.addEventListener("change", () => {
   });
 });
 
+document.querySelectorAll("[data-dividend-enabled]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.dividendEnabled = button.dataset.dividendEnabled === "true";
+    syncDividendControls();
+    updateAll();
+  });
+});
+
+document.querySelectorAll("[data-dividend-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.dividendMode = button.dataset.dividendMode;
+    syncDividendControls();
+    updateAll();
+  });
+});
+
 document.querySelectorAll("[data-amount]").forEach((button) => {
   button.addEventListener("click", () => {
     const amount = button.dataset.amount === "reverse" ? (latestResult.reverse === null ? null : Math.ceil(latestResult.reverse)) : Number(button.dataset.amount);
@@ -917,13 +1035,13 @@ if ("ResizeObserver" in window) {
   const observer = new ResizeObserver(() => {
     window.cancelAnimationFrame(resizeFrame);
     resizeFrame = window.requestAnimationFrame(() => {
-      if (latestResult) renderChart(latestResult.projection.points, latestResult.chartStart);
+      if (latestResult) renderChart(latestResult.projection.points, latestResult.chartStart, latestResult);
     });
   });
   observer.observe($("chartWrap"));
 } else {
   window.addEventListener("resize", () => {
-    if (latestResult) renderChart(latestResult.projection.points, latestResult.chartStart);
+    if (latestResult) renderChart(latestResult.projection.points, latestResult.chartStart, latestResult);
   });
 }
 

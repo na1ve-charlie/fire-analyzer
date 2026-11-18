@@ -46,7 +46,7 @@ test("方案快照包含完整引擎版本与审计信息", () => {
   assert.equal(payload.schema, SNAPSHOT_SCHEMA);
   assert.equal(payload.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
   assert.equal(payload.exportedAt, "2026-11-17T00:00:00.000Z");
-  assert.equal(payload.engineVersions.fire, "fire-engine.2.0.0-alpha.1");
+  assert.equal(payload.engineVersions.fire, "fire-engine.2.1.0-alpha.1");
   assert.equal(payload.engineVersions.risk, "risk-engine.v0.1.0");
   assert.ok(payload.result.audit.formulas.requiredCapital.includes("净支出现值"));
 });

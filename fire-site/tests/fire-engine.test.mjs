@@ -65,6 +65,36 @@ test("红利低波定投输出市值与股息", () => {
   assert.ok(result.fundAnnualDividend > 0);
   assert.ok(result.fundMonthlyDividend > 0);
   assert.equal(result.fundScenarios.length, 3);
+  assert.equal(result.dividendPlan.enabled, false);
+  assert.equal(result.projection.points.every((point) => point.dividendOffset === 0), true);
+});
+
+test("启用红利后按定投年限开始领取并降低反推本金", () => {
+  const input = { ...baseInput, years: 60, dcaYears: 25, dividendEnabled: true, dividendMode: "dividendOnly" };
+  const disabled = calculateFirePlan({ ...input, dividendEnabled: false });
+  const enabled = calculateFirePlan(input);
+  assert.equal(enabled.dividendPlan.startYear, 25);
+  assert.equal(enabled.projection.points[24].dividendIncome, 0);
+  assert.ok(enabled.projection.points[25].dividendIncome > 0);
+  assert.ok(enabled.reverse < disabled.reverse);
+  assert.ok(enabled.dividendReverseSaving > 0);
+});
+
+test("股息+本金模式按年金领取并在测算期末归零", () => {
+  const input = { ...baseInput, years: 60, dcaYears: 25, dividendEnabled: true, dividendMode: "dividendPrincipal" };
+  const dividendOnly = calculateFirePlan({ ...input, dividendMode: "dividendOnly" });
+  const result = calculateFirePlan(input);
+  assert.equal(result.dividendPlan.remainingYears, 36);
+  assert.ok(result.dividendPlan.annualPayment > 0);
+  assert.equal(result.projection.points[25].dividendIncome, result.dividendPlan.annualPayment);
+  assert.ok(result.reverse < dividendOnly.reverse);
+});
+
+test("现金流曲线会定位拐点", () => {
+  const result = calculateFirePlan(baseInput);
+  assert.ok(result.projection.turningPoint);
+  assert.equal(typeof result.projection.turningPoint.year, "number");
+  assert.ok(["peak", "decline"].includes(result.projection.turningPoint.type));
 });
 
 test("异常输入会被安全收敛", () => {
