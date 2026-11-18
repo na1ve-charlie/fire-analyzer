@@ -90,6 +90,26 @@ test("股息+本金模式按年金领取并在测算期末归零", () => {
   assert.ok(result.reverse < dividendOnly.reverse);
 });
 
+test("领取金额按通胀折算回 FIRE 起点的购买力", () => {
+  const input = { ...baseInput, years: 60, dcaYears: 25, inflationRate: 3, dividendEnabled: true, dividendMode: "dividendOnly" };
+  const result = calculateFirePlan(input);
+  const plan = result.dividendPlan;
+  assert.ok(plan.annualIncome > 0);
+  assert.ok(plan.annualIncomeReal > 0);
+  assert.ok(plan.annualIncomeReal < plan.annualIncome);
+  // 折算因子 = 1 / (1.03 ^ 25)
+  assert.ok(Math.abs(plan.purchasingPowerFactor - 1 / Math.pow(1.03, 25)) < 1e-9);
+  assert.ok(Math.abs(plan.annualIncomeReal - plan.annualIncome / Math.pow(1.03, 25)) < 0.01);
+  assert.ok(Math.abs(plan.monthlyIncomeReal - plan.annualIncomeReal / 12) < 0.01);
+});
+
+test("未启用红利时不计算购买力折算", () => {
+  const result = calculateFirePlan(baseInput);
+  assert.equal(result.dividendPlan.purchasingPowerFactor, 1);
+  assert.equal(result.dividendPlan.annualIncome, 0);
+  assert.equal(result.dividendPlan.annualIncomeReal, 0);
+});
+
 test("现金流曲线会定位拐点", () => {
   const result = calculateFirePlan(baseInput);
   assert.ok(result.projection.turningPoint);

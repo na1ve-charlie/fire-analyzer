@@ -63,6 +63,23 @@ function formatOptionalMoney(value) {
   return value === null || !Number.isFinite(value) ? "—" : formatMoney(value);
 }
 
+// 名义金额 + 折算回 FIRE 起点购买力，购买力部分用小号字展示：¥3000/¥1500
+function setMoneyWithRealPurchasingPower(id, nominal, real) {
+  const element = $(id);
+  if (!element) return;
+  const hasReal = Number.isFinite(real) && Number.isFinite(nominal) && real < nominal - 0.5;
+  const html = hasReal
+    ? `${formatMoney(nominal)}<span class="real-money">/${formatMoney(real)}</span>`
+    : formatMoney(nominal);
+  if (element.innerHTML === html) return;
+  element.innerHTML = html;
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    element.classList.remove("value-updated");
+    void element.offsetWidth;
+    element.classList.add("value-updated");
+  }
+}
+
 function formatCompactMoney(value) {
   const absolute = Math.abs(value);
   if (absolute >= 100000000) return `¥${(value / 100000000).toFixed(2)}亿`;
@@ -408,15 +425,22 @@ function updateAll() {
     setText("dividendStartNote", `未启用；启用后将按定投年限从 FIRE 第 ${state.dcaYears} 年开始领取。`, false);
   }
 
+  const powerNote = dividendActive && Number.isFinite(dividendPlan?.annualIncomeReal)
+    ? `斜杠后为折算回 FIRE 起点（第 0 年）的购买力，按 ${formatPercent(state.inflationRate)} 通胀、第 ${dividendPlan.startYear} 年折现。`
+    : "";
   setText("fundValue", formatMoney(result.fundValue));
   setText("fundValueDetail", `定投 ${state.dcaYears} 年，每月 ${formatMoney(result.dcaMonthly)}，累计投入 ${formatMoney(result.dcaTotalContributed)}。`);
-  setText("fundAnnualDividend", formatMoney(dividendActive ? annualIncome : result.fundAnnualDividend));
-  setText("fundAnnualDividendDetail", !dividendActive
+  setMoneyWithRealPurchasingPower("fundAnnualDividend",
+    dividendActive ? dividendPlan.annualIncome : result.fundAnnualDividend,
+    dividendActive ? dividendPlan.annualIncomeReal : null);
+  setText("fundAnnualDividendDetail", (!dividendActive
     ? `按股息率 ${formatPercent(state.dividendYield)} 计算，仅供测算参考。`
     : dividendPlan.mode === "dividendOnly"
       ? `按股息率 ${formatPercent(state.dividendYield)} 计算，不卖出本金。`
-      : `按 ${formatPercent(state.dcaReturnRate)} 收益率年金化，领取 ${dividendPlan.remainingYears} 年后归零。`);
-  setText("fundMonthlyDividend", formatMoney(dividendActive ? monthlyIncome : result.fundMonthlyDividend));
+      : `按 ${formatPercent(state.dcaReturnRate)} 收益率年金化，领取 ${dividendPlan.remainingYears} 年后归零。`) + powerNote);
+  setMoneyWithRealPurchasingPower("fundMonthlyDividend",
+    dividendActive ? dividendPlan.monthlyIncome : result.fundMonthlyDividend,
+    dividendActive ? dividendPlan.monthlyIncomeReal : null);
   setText("fundMonthlyDividendDetail", !dividendActive
     ? (result.fundCoverage === null
       ? "当前月支出为 0，无法计算覆盖比例。"

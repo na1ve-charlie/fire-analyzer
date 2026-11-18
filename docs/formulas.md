@@ -168,6 +168,17 @@ PV(DividendOffset) =
 
 有限期限反推本金、金鹅永续反推本金都会减去该项现值。金鹅永续 + 仅股息模式按无限期现金流折现；股息+本金模式只在测算期内领取，期末归零。
 
+领取金额购买力折算（展示用，按领取起点名义金额折回 FIRE 开始时点）：
+
+```text
+PurchasingPowerFactor = 1 / (1 + inflationRate) ^ DividendStartYear
+
+AnnualIncomeReal  = AnnualIncome  × PurchasingPowerFactor
+MonthlyIncomeReal = AnnualIncomeReal / 12
+```
+
+页面以 `¥名义/¥购买力` 形式展示（如 `¥3,000/¥1,500`），斜杠后为小号字的购买力金额，仅用于和 FIRE 起点支出做直观对比，不参与反推与现金流计算。
+
 ---
 
 ## 7. 风险规则

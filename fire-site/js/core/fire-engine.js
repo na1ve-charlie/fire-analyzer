@@ -204,11 +204,20 @@ function buildDividendPlan(input, dcaPlan, annualExpense, inflation, annualRetur
   const annualPayment = enabled && input.dividendMode === "dividendPrincipal"
     ? annuityPaymentForFund(dcaPlan.fundValue, input.dcaReturnRate / 100, remainingYears)
     : 0;
+  const annualIncome = !enabled
+    ? 0
+    : input.dividendMode === "dividendPrincipal" ? annualPayment : annualDividend;
+  // 领取起点在第 startYear 年的名义金额，按通胀折算回 FIRE 起点（第 0 年）的购买力。
+  const purchasingPowerFactor = enabled && startYear > 0
+    ? 1 / Math.pow(1 + inflation, startYear)
+    : 1;
+  const annualIncomeReal = annualIncome * purchasingPowerFactor;
+  const monthlyIncome = annualIncome / 12;
+  const monthlyIncomeReal = annualIncomeReal / 12;
 
   const dividendIncomeByYear = new Array(years + 1).fill(0);
   const dividendOffsetByYear = new Array(years + 1).fill(0);
   if (enabled && startYear !== null) {
-    const annualIncome = input.dividendMode === "dividendPrincipal" ? annualPayment : annualDividend;
     for (let year = startYear; year <= years; year += 1) {
       const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
       dividendIncomeByYear[year] = annualIncome;
@@ -224,6 +233,11 @@ function buildDividendPlan(input, dcaPlan, annualExpense, inflation, annualRetur
     fundValueAtStart: dcaPlan.fundValue,
     annualDividend,
     annualPayment,
+    annualIncome,
+    annualIncomeReal,
+    monthlyIncome,
+    monthlyIncomeReal,
+    purchasingPowerFactor,
     dividendIncomeByYear,
     dividendOffsetByYear,
     totalDividendOffset: dividendOffsetByYear.reduce((sum, value) => sum + value, 0)
@@ -396,7 +410,8 @@ export function calculateFirePlan(rawInput = {}) {
         requiredCapital: "未来净支出现值；FIRE 后储备利息与红利抵扣按现值抵扣投资本金需求。",
         reserveInterest: "FIRE 后利息 =（医疗储备 + 10% 安全垫）× 储备利率；积累阶段不计息。",
         reserveAccumulation: "住家储蓄按年通胀递增，副业收入保持不变；积累阶段不计息。",
-        dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。"
+        dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。",
+        dividendPurchasingPower: "领取金额为领取起点当年名义金额；购买力折算 = 名义金额 ÷ (1 + 通胀率)^领取起点年，即换算回 FIRE 开始时的购买力。"
       }
     }
   };

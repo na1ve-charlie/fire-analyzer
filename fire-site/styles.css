@@ -354,6 +354,7 @@ html[data-theme="dark"] .medical-input-wrap { background: #1f1b13; }
 .fund-results article { min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .fund-results article > span { display: block; margin-bottom: 10px; color: var(--muted); font-size: 9px; }
 .fund-results article > strong { display: block; margin-bottom: 5px; overflow: hidden; font-size: 22px; font-weight: 670; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fund-results article > strong .real-money { margin-left: 1px; font-size: 13px; font-weight: 560; letter-spacing: -.01em; color: var(--muted); opacity: .85; }
 .fund-results article > p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.7; }
 .fund-results article:nth-child(2) > strong, .fund-results article:nth-child(3) > strong { color: var(--teal); }
 .fund-scenario { margin-top: 16px; }
