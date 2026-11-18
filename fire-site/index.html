@@ -312,6 +312,12 @@
               <button type="button" data-dividend-mode="dividendPrincipal">股息+本金</button>
             </div>
           </div>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="定投通胀调整">
+              <button type="button" data-dca-inflation="false" class="active">定投随通胀：关</button>
+              <button type="button" data-dca-inflation="true">定投随通胀：开</button>
+            </div>
+          </div>
           <p class="fund-start-note" id="dividendStartNote">未启用；启用后将按定投年限从 FIRE 第 10 年开始领取。</p>
           <div class="fund-controls">
             <label class="fund-field" for="dcaYears"><span>定投年限</span><div class="number-suffix"><input id="dcaYears" type="number" min="1" max="50" step="1" value="10" aria-label="定投年限"><span>年</span></div></label>
@@ -333,7 +339,7 @@
               </table>
             </div>
           </div>
-          <p class="panel-footnote">按月复利折算，月末定投；退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
+          <p class="panel-footnote">按月复利折算，月末定投；可开启「定投随通胀」使月投额逐年递增。退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
         </section>
 
         <section class="panel workspace-panel" id="workspace">

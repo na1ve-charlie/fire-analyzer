@@ -27,6 +27,7 @@ const DEFAULT_STATE = {
   medicalReserve: 150000,
   dcaYears: 10,
   dcaMonthly: 2000,
+  dcaInflationAdjust: false,
   dcaReturnRate: 6,
   dividendYield: 4,
   dividendEnabled: false,
@@ -429,7 +430,9 @@ function updateAll() {
     ? `斜杠后为折算回 FIRE 起点（第 0 年）的购买力，按 ${formatPercent(state.inflationRate)} 通胀、第 ${dividendPlan.startYear} 年折现。`
     : "";
   setText("fundValue", formatMoney(result.fundValue));
-  setText("fundValueDetail", `定投 ${state.dcaYears} 年，每月 ${formatMoney(result.dcaMonthly)}，累计投入 ${formatMoney(result.dcaTotalContributed)}。`);
+  setText("fundValueDetail", result.dcaInflationAdjust
+    ? `定投 ${state.dcaYears} 年，首年每月 ${formatMoney(result.dcaMonthly)}、末年每月 ${formatMoney(result.dcaFinalMonthly)}（按 ${formatPercent(state.inflationRate)} 通胀逐年递增），累计投入 ${formatMoney(result.dcaTotalContributed)}。`
+    : `定投 ${state.dcaYears} 年，每月 ${formatMoney(result.dcaMonthly)}，累计投入 ${formatMoney(result.dcaTotalContributed)}。`);
   setMoneyWithRealPurchasingPower("fundAnnualDividend",
     dividendActive ? dividendPlan.annualIncome : result.fundAnnualDividend,
     dividendActive ? dividendPlan.annualIncomeReal : null);
@@ -816,6 +819,11 @@ function syncDividendControls() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
+  document.querySelectorAll("[data-dca-inflation]").forEach((button) => {
+    const active = (button.dataset.dcaInflation === "true") === state.dcaInflationAdjust;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
 }
 
 // 仅同步储备利率快捷按钮高亮，不改写输入框（避免输入小数时被中断）。
@@ -915,6 +923,7 @@ function downloadCsv() {
     ["FIRE后储备利率", `${state.reserveReturnRate}%`],
     ["副业被动月收入", state.sideIncomeMonthly],
     ["红利低波定投", `${state.dcaYears}年 / ${state.dcaMonthly}元每月 / ${state.dcaReturnRate}%收益 / ${state.dividendYield}%股息`],
+    ["定投随通胀调整", state.dcaInflationAdjust ? `开启（按 ${state.inflationRate}% 通胀逐年递增，末年 ${formatMoney(latestResult.dcaFinalMonthly)}/月）` : "关闭（每月固定）"],
     ["红利定投状态", state.dividendEnabled ? "已启用" : "未启用"],
     ["红利领取模式", state.dividendMode === "dividendOnly" ? "仅领取股息" : "领取股息+本金"],
     ["红利领取起点", latestResult.dividendPlan?.startYear === null || latestResult.dividendPlan?.startYear === undefined ? "未启用/不在测算期内" : `FIRE第${latestResult.dividendPlan.startYear}年`],
@@ -1074,6 +1083,14 @@ document.querySelectorAll("[data-dividend-enabled]").forEach((button) => {
 document.querySelectorAll("[data-dividend-mode]").forEach((button) => {
   button.addEventListener("click", () => {
     state.dividendMode = button.dataset.dividendMode;
+    syncDividendControls();
+    updateAll();
+  });
+});
+
+document.querySelectorAll("[data-dca-inflation]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.dcaInflationAdjust = button.dataset.dcaInflation === "true";
     syncDividendControls();
     updateAll();
   });

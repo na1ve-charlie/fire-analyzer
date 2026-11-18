@@ -29,6 +29,7 @@ function normalizeFireInputs(rawInput = {}) {
     medicalReserve: clampNumber(rawInput.medicalReserve, 0, 1000000, 0),
     dcaYears: Math.round(clampNumber(rawInput.dcaYears, 1, 50, 10)),
     dcaMonthly: clampNumber(rawInput.dcaMonthly, 0, 1000000, 0),
+    dcaInflationAdjust: rawInput.dcaInflationAdjust === true,
     dcaReturnRate: clampNumber(rawInput.dcaReturnRate, 0, 20, 6),
     dividendYield: clampNumber(rawInput.dividendYield, 0, 15, 4),
     dividendEnabled: rawInput.dividendEnabled === true,
@@ -190,6 +191,22 @@ function futureValueMonthlyDca(monthlyAmount, years, annualReturnRate) {
   return monthlyAmount * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate);
 }
 
+// 月定投额按年通胀逐年上调：第 y 年每月投入 monthlyAmount × (1+inflation)^y，月末投入、月复利。
+function futureValueGrowingDca(monthlyAmount, years, annualReturnRate, inflation) {
+  const months = Math.max(0, Math.round(years * 12));
+  if (monthlyAmount <= 0 || months <= 0) return { value: 0, contributed: 0 };
+  const monthlyRate = Math.pow(1 + annualReturnRate, 1 / 12) - 1;
+  let balance = 0;
+  let contributed = 0;
+  for (let month = 1; month <= months; month += 1) {
+    const yearIndex = Math.floor((month - 1) / 12);
+    const payment = monthlyAmount * Math.pow(1 + inflation, yearIndex);
+    balance = balance * (1 + monthlyRate) + payment;
+    contributed += payment;
+  }
+  return { value: balance, contributed };
+}
+
 function annuityPaymentForFund(fundValue, annualReturnRate, years) {
   if (fundValue <= 0 || years <= 0) return 0;
   if (annualReturnRate <= 0) return fundValue / years;
@@ -272,13 +289,22 @@ function calculateDividendOffsetPresentValue(dividendPlan, annualExpense, inflat
   return presentValue;
 }
 
-function buildDcaPlan(input, monthlyExpense) {
+function buildDcaPlan(input, monthlyExpense, inflation) {
   const dcaMonths = Math.max(0, Math.round(input.dcaYears * 12));
   const dcaReturnRate = input.dcaReturnRate / 100;
   const dividendYieldRate = input.dividendYield / 100;
   const dcaMonthly = input.dcaMonthly;
-  const dcaTotalContributed = dcaMonthly * dcaMonths;
-  const fundValue = futureValueMonthlyDca(dcaMonthly, input.dcaYears, dcaReturnRate);
+  const adjust = input.dcaInflationAdjust;
+  const project = (rate) => adjust
+    ? futureValueGrowingDca(dcaMonthly, input.dcaYears, rate, inflation)
+    : { value: futureValueMonthlyDca(dcaMonthly, input.dcaYears, rate), contributed: dcaMonthly * dcaMonths };
+
+  const base = project(dcaReturnRate);
+  const fundValue = base.value;
+  const dcaTotalContributed = base.contributed;
+  const finalMonthly = adjust && dcaMonths > 0
+    ? dcaMonthly * Math.pow(1 + inflation, Math.floor((dcaMonths - 1) / 12))
+    : dcaMonthly;
   const fundAnnualDividend = fundValue * dividendYieldRate;
   const fundMonthlyDividend = fundAnnualDividend / 12;
   const scenarios = [
@@ -286,7 +312,7 @@ function buildDcaPlan(input, monthlyExpense) {
     { label: "当前设置", rate: input.dcaReturnRate },
     { label: "高收益（+2%）", rate: Math.min(20, input.dcaReturnRate + 2) }
   ].map((scenario) => {
-    const value = futureValueMonthlyDca(dcaMonthly, input.dcaYears, scenario.rate / 100);
+    const value = project(scenario.rate / 100).value;
     return {
       label: scenario.label,
       rate: scenario.rate,
@@ -299,6 +325,8 @@ function buildDcaPlan(input, monthlyExpense) {
   return {
     dcaMonths,
     dcaMonthly,
+    dcaInflationAdjust: adjust,
+    dcaFinalMonthly: finalMonthly,
     dcaTotalContributed,
     fundValue,
     fundAnnualDividend,
@@ -319,7 +347,7 @@ export function calculateFirePlan(rawInput = {}) {
   const cashReserve = monthly * 36;
   const reserveRate = input.reserveReturnRate / 100;
 
-  const dcaPlan = buildDcaPlan(input, monthly);
+  const dcaPlan = buildDcaPlan(input, monthly, inflation);
   const dividendPlan = buildDividendPlan(input, dcaPlan, annual, inflation, annualReturn, input.years);
 
   const perpetualReverse = annualReturn > inflation ? annual / (annualReturn - inflation) : null;
@@ -410,7 +438,7 @@ export function calculateFirePlan(rawInput = {}) {
         requiredCapital: "未来净支出现值；FIRE 后储备利息与红利抵扣按现值抵扣投资本金需求。",
         reserveInterest: "FIRE 后利息 =（医疗储备 + 10% 安全垫）× 储备利率；积累阶段不计息。",
         reserveAccumulation: "住家储蓄按年通胀递增，副业收入保持不变；积累阶段不计息。",
-        dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。",
+        dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。开启定投通胀调整后，第 y 年月投额 = 基准月投额 ×(1+通胀率)^y。",
         dividendPurchasingPower: "领取金额为领取起点当年名义金额；购买力折算 = 名义金额 ÷ (1 + 通胀率)^领取起点年，即换算回 FIRE 开始时的购买力。"
       }
     }

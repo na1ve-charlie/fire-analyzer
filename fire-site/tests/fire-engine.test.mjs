@@ -90,6 +90,36 @@ test("股息+本金模式按年金领取并在测算期末归零", () => {
   assert.ok(result.reverse < dividendOnly.reverse);
 });
 
+test("开启定投随通胀后市值、累计投入与股息增大，关闭时保持固定定投", () => {
+  const input = { ...baseInput, dcaYears: 10, dcaMonthly: 2000, inflationRate: 2, dividendEnabled: true, dividendMode: "dividendOnly" };
+  const fixed = calculateFirePlan(input);
+  const growing = calculateFirePlan({ ...input, dcaInflationAdjust: true });
+  assert.equal(fixed.dcaInflationAdjust, false);
+  assert.equal(growing.dcaInflationAdjust, true);
+  // 关闭时每项投入都等于基准月投额
+  assert.equal(fixed.dcaTotalContributed, 2000 * 120);
+  assert.equal(fixed.dcaFinalMonthly, 2000);
+  // 开启后逐年递增
+  assert.ok(growing.fundValue > fixed.fundValue);
+  assert.ok(growing.dcaTotalContributed > fixed.dcaTotalContributed);
+  assert.ok(growing.dcaFinalMonthly > 2000);
+  assert.ok(growing.dividendPlan.annualIncome > fixed.dividendPlan.annualIncome);
+  assert.ok(growing.reverse < fixed.reverse);
+  // 末年每月投入 = 2000 × 1.02^9
+  assert.ok(Math.abs(growing.dcaFinalMonthly - 2000 * Math.pow(1.02, 9)) < 0.01);
+  assert.equal(growing.fundScenarios.length, 3);
+});
+
+test("定投随通胀开启时收益情景也同步递增", () => {
+  const base = { ...baseInput, dcaYears: 10, dcaMonthly: 2000, dcaInflationAdjust: true, inflationRate: 2 };
+  const result = calculateFirePlan(base);
+  const current = result.fundScenarios.find((s) => s.label === "当前设置");
+  assert.ok(Math.abs(current.value - result.fundValue) < 0.01);
+  const low = result.fundScenarios.find((s) => s.rate === 4);
+  const high = result.fundScenarios.find((s) => s.rate === 8);
+  assert.ok(low.value < current.value && current.value < high.value);
+});
+
 test("领取金额按通胀折算回 FIRE 起点的购买力", () => {
   const input = { ...baseInput, years: 60, dcaYears: 25, inflationRate: 3, dividendEnabled: true, dividendMode: "dividendOnly" };
   const result = calculateFirePlan(input);

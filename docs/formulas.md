@@ -18,6 +18,7 @@
 | `reserveReturnRate` | FIRE 后储备账户年化利率 |
 | `sideIncomeMonthly` | 副业被动月收入 |
 | `dcaYears` / `dcaMonthly` / `dcaReturnRate` / `dividendYield` | 红利低波定投与股息假设 |
+| `dcaInflationAdjust` | 月定投额是否随通胀逐年递增；关闭时每月固定 |
 | `dividendEnabled` | 红利定投是否启用；未启用时不参与反推本金与现金流曲线 |
 | `dividendMode` | `dividendOnly` 仅领取股息；`dividendPrincipal` 领取股息+本金 |
 
@@ -136,6 +137,17 @@ MonthlyRate = (1 + dcaReturnRate) ^ (1 / 12) - 1
 FundValue =
   dcaMonthly × ((1 + MonthlyRate) ^ Months - 1) / MonthlyRate
 ```
+
+开启 `dcaInflationAdjust` 后，月投额按年通胀逐年递增（第 y 年每月投入随年份上调，月末投入、逐月复利）：
+
+```text
+Payment(m) = dcaMonthly × (1 + inflationRate) ^ floor((m - 1) / 12)
+
+FundValue       = Σ Payment(m) × (1 + MonthlyRate) ^ (Months - m)
+TotalContributed= Σ Payment(m)
+```
+
+末年每月投入 `dcaFinalMonthly = dcaMonthly × (1 + inflationRate) ^ floor((Months - 1) / 12)`。递增后市值、股息与红利抵扣均上升，反推本金相应下降。
 
 领取起点：
 
