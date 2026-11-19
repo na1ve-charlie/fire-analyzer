@@ -134,9 +134,9 @@
           <div class="panel-heading"><div><span class="step-number">03</span><h2>预期初始本金</h2></div></div>
           <label class="principal-input-wrap" for="principalInput">
             <span>¥</span>
-            <input id="principalInput" type="number" min="0" max="100000000" step="1000" value="1885510">
+            <input id="principalInput" type="number" min="0" max="100000000" step="1000" value="1400000">
           </label>
-          <input class="range principal-range" id="principalRange" type="range" min="0" max="5000000" step="1000" value="1885510">
+          <input class="range principal-range" id="principalRange" type="range" min="0" max="5000000" step="1000" value="1400000">
           <div class="range-scale"><span>0</span><span>500 万</span></div>
           <div class="quick-amounts">
             <button type="button" data-amount="1000000">100 万</button>
@@ -251,11 +251,11 @@
           <p class="reserve-lead" id="reserveTargetText">达到投资本金后，还需单独准备补充储备。</p>
           <div class="reserve-return-row">
             <label class="reserve-return-label" for="reserveReturnRate">FIRE 后储备利率</label>
-            <div class="number-suffix"><input id="reserveReturnRate" type="number" min="0" max="8" step="0.01" value="2.25" aria-label="FIRE 后储备年化利率"><span>%</span></div>
+            <div class="number-suffix"><input id="reserveReturnRate" type="number" min="0" max="8" step="0.01" value="3" aria-label="FIRE 后储备年化利率"><span>%</span></div>
             <div class="reserve-rate-quick" role="group" aria-label="FIRE 后储备利率快捷档">
               <button type="button" data-reserve-rate="2">2.0%</button>
-              <button type="button" data-reserve-rate="2.25" class="active">2.25%</button>
-              <button type="button" data-reserve-rate="2.5">2.5%</button>
+              <button type="button" data-reserve-rate="3" class="active">3.0%</button>
+              <button type="button" data-reserve-rate="3.5">3.5%</button>
             </div>
           </div>
           <div class="reserve-layout">
@@ -279,7 +279,7 @@
                 <div class="reserve-card-top"><span>方式二</span><h3>副业被动收入</h3></div>
                 <label class="side-income" for="sideIncome">
                   <span>¥</span>
-                  <input id="sideIncome" type="number" min="0" max="1000000" step="100" value="2000" aria-label="副业被动月收入">
+                  <input id="sideIncome" type="number" min="0" max="1000000" step="100" value="1200" aria-label="副业被动月收入">
                   <small>元 / 月</small>
                 </label>
                 <strong id="sideDelay">—</strong>
@@ -321,7 +321,7 @@
           <p class="fund-start-note" id="dividendStartNote">未启用；启用后将按定投年限从 FIRE 第 10 年开始领取。</p>
           <div class="fund-controls">
             <label class="fund-field" for="dcaYears"><span>定投年限</span><div class="number-suffix"><input id="dcaYears" type="number" min="1" max="50" step="1" value="10" aria-label="定投年限"><span>年</span></div></label>
-            <label class="fund-field" for="dcaMonthly"><span>定投金额</span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="2000" aria-label="每月定投金额"><span>元 / 月</span></div></label>
+            <label class="fund-field" for="dcaMonthly"><span>定投金额</span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="1200" aria-label="每月定投金额"><span>元 / 月</span></div></label>
             <label class="fund-field" for="dcaReturnRate"><span>年化收益率</span><div class="number-suffix"><input id="dcaReturnRate" type="number" min="0" max="20" step="0.1" value="6" aria-label="定投年化收益率"><span>%</span></div></label>
             <label class="fund-field" for="dividendYield"><span>股息率</span><div class="number-suffix"><input id="dividendYield" type="number" min="0" max="15" step="0.1" value="4" aria-label="股息率"><span>%</span></div></label>
           </div>

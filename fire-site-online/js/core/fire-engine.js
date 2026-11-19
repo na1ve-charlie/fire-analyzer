@@ -25,7 +25,7 @@ function normalizeFireInputs(rawInput = {}) {
     years: Math.round(clampNumber(rawInput.years, 10, 80, 50)),
     principal: clampNumber(rawInput.principal, 0, 100000000, 0),
     sideIncomeMonthly: clampNumber(rawInput.sideIncomeMonthly, 0, 1000000, 0),
-    reserveReturnRate: clampNumber(rawInput.reserveReturnRate, 0, 8, 2.25),
+    reserveReturnRate: clampNumber(rawInput.reserveReturnRate, 0, 8, 3),
     medicalReserve: clampNumber(rawInput.medicalReserve, 0, 1000000, 0),
     dcaYears: Math.round(clampNumber(rawInput.dcaYears, 1, 50, 10)),
     dcaMonthly: clampNumber(rawInput.dcaMonthly, 0, 1000000, 0),
