@@ -12,15 +12,23 @@ export const MC_ENGINE_VERSION = "monte-carlo.1.0.0";
 export const MC_PROFILES = {
   myPortfolio: {
     label: "我的组合",
-    sigma: 11,
-    note: "按实际持仓权重测算",
+    sigma: 12.54,
+    note: "按近 10 年回测数据校准",
+    backtest: {
+      period: "2016-11-22 ~ 2026-11-18",
+      cagr: 6.73,
+      volatility: 12.54,
+      maxDrawdown: -20.15,
+      sharpe: 0.37,
+      riskFreeRate: 2.11
+    },
     holdings: [
-      { name: "红利低波", fund: "D红利低波", group: "cnDividend", weight: 42, mu: 5.5, sigma: 16 },
-      { name: "红利低波-波段", fund: "D红利低波", group: "cnDividend", weight: 18, mu: 5.5, sigma: 12 },
-      { name: "量化微盘", fund: "华夏新锦绣混合（002833/002834）", group: "cnMicro", weight: 4.5, mu: 8, sigma: 28 },
-      { name: "纳斯达克100", fund: "W美股指数", group: "usEquity", weight: 4.5, mu: 8.5, sigma: 22 },
-      { name: "标普500", fund: "W美股指数", group: "usEquity", weight: 21, mu: 7, sigma: 16 },
-      { name: "现金", fund: "C现金", group: "cash", weight: 10, mu: 1.5, sigma: 0.5 }
+      { name: "红利低波", fund: "D红利低波（中证红利低波 H30269）", group: "cnDividend", weight: 42, mu: 4.16, sigma: 16.58 },
+      { name: "红利低波-波段", fund: "D红利低波（同底层回测）", group: "cnDividend", weight: 18, mu: 4.16, sigma: 16.58 },
+      { name: "量化微盘", fund: "华夏新锦绣混合（002833/002834）", group: "cnMicro", weight: 4.5, mu: 10.86, sigma: 18.30 },
+      { name: "纳斯达克100", fund: "W美股指数（纳指ETF 513100）", group: "usEquity", weight: 4.5, mu: 19.95, sigma: 23.02 },
+      { name: "标普500", fund: "W美股指数（标普ETF 513500）", group: "usEquity", weight: 21, mu: 12.62, sigma: 18.95 },
+      { name: "现金", fund: "C现金（货币基金七天年化）", group: "cash", weight: 10, mu: 2.11, sigma: 0 }
     ]
   },
   balanced: { label: "股债 50/50", sigma: 9, note: "中等波动" },
@@ -32,14 +40,14 @@ export const MC_PROFILES = {
 function correlation(groupA, groupB) {
   if (groupA === groupB) {
     if (groupA === "cash") return 1;
-    if (groupA === "cnDividend") return 0.9;
-    if (groupA === "usEquity") return 0.85;
+    if (groupA === "cnDividend") return 1; // 两档红利低波共用同一底层指数
+    if (groupA === "usEquity") return 0.82; // 513100/513500 近十年实测约 0.82
     return 1;
   }
   const pair = [groupA, groupB].sort().join("|");
-  if (pair === "cnDividend|cnMicro") return 0.6;
-  if (pair === "cnDividend|usEquity") return 0.25;
-  if (pair === "cnMicro|usEquity") return 0.3;
+  if (pair === "cnDividend|cnMicro") return 0.50;
+  if (pair === "cnDividend|usEquity") return 0.24;
+  if (pair === "cnMicro|usEquity") return 0.28;
   return 0; // 现金与其他资产按低相关处理
 }
 

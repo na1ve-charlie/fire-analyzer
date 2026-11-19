@@ -138,10 +138,12 @@ test("我的组合持仓权重与截图一致", () => {
   assert.ok(micro.fund.includes("华夏新锦绣"));
 });
 
-test("组合收益与波动按权重和相关性计算", () => {
+test("组合收益与波动按近十年回测数据加权计算", () => {
   const stats = computePortfolioStats(MC_PROFILES.myPortfolio.holdings);
-  assert.ok(Math.abs(stats.mu - 0.056625) < 1e-6);
-  assert.ok(stats.sigma > 0.08 && stats.sigma < 0.16);
+  assert.ok(Math.abs(stats.mu - 0.0674365) < 1e-6);
+  assert.ok(stats.sigma > 0.11 && stats.sigma < 0.14);
+  assert.equal(MC_PROFILES.myPortfolio.backtest.cagr, 6.73);
+  assert.equal(MC_PROFILES.myPortfolio.backtest.maxDrawdown, -20.15);
 });
 
 test("我的组合预设使用组合自身中枢而非全局收益率", () => {
