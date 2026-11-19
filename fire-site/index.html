@@ -27,6 +27,7 @@
       <nav class="header-nav" aria-label="页面导航">
         <a href="#calculator">测算台</a>
         <a href="#breakdown">方案拆解</a>
+        <a href="#montecarlo">波动模拟</a>
         <a href="#method">计算口径</a>
       </nav>
       <button class="button button-ghost theme-toggle" id="themeToggle" type="button" aria-label="切换明暗主题">
@@ -340,6 +341,47 @@
             </div>
           </div>
           <p class="panel-footnote">按月复利折算，月末定投；可开启「定投随通胀」使月投额逐年递增。退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
+        </section>
+
+        <section class="panel monte-carlo-panel" id="montecarlo">
+          <div class="section-heading">
+            <div><p class="section-kicker">MONTE CARLO</p><h2>收益波动下的存续概率</h2></div>
+            <span class="soft-badge" id="mcBadge">—</span>
+          </div>
+          <p class="fund-lead" id="mcLead">在当前收益中枢上叠加年度波动，观察 50 年内有多少路径能够安全走完。</p>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="资产配置波动率">
+              <button type="button" data-mc-profile="balanced" class="active">股债 50/50</button>
+              <button type="button" data-mc-profile="equity70">股 70 / 债 30</button>
+              <button type="button" data-mc-profile="equity100">100% 股票</button>
+              <button type="button" data-mc-profile="dividend">红利低波</button>
+            </div>
+            <div class="fund-toggle-group" role="group" aria-label="模拟次数">
+              <button type="button" data-mc-runs="2000">2,000 次</button>
+              <button type="button" data-mc-runs="5000" class="active">5,000 次</button>
+              <button type="button" data-mc-runs="10000">10,000 次</button>
+            </div>
+          </div>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="支出弹性">
+              <button type="button" data-mc-flex="false" class="active">支出弹性：关</button>
+              <button type="button" data-mc-flex="true">支出弹性：开（回撤超 20% 时支出减 10%）</button>
+            </div>
+          </div>
+          <div class="mc-params" id="mcParams"></div>
+          <div class="fund-results mc-kpis" id="mcKpis"></div>
+          <div class="mc-columns">
+            <div>
+              <div class="fund-scenario-title">期末资产分布</div>
+              <div class="table-wrap"><table id="mcDistTable"></table></div>
+            </div>
+            <div>
+              <div class="fund-scenario-title">失败路径耗尽年份分布</div>
+              <div class="chart-wrap mc-hist-wrap"><svg id="mcHistogram" role="img" aria-label="耗尽年份分布"></svg></div>
+            </div>
+          </div>
+          <div class="mc-conservation" id="mcConservation"></div>
+          <p class="panel-footnote">收益路径按对数正态分布生成，年化中枢取当前「年化收益率」，波动率由资产配置预设决定；固定随机种子 20261119，结果可复现。该模拟只改变波动假设，不修改上方确定性测算与反推本金。参数为示意假设，非市场预测，不构成投资建议。</p>
         </section>
 
         <section class="panel workspace-panel" id="workspace">

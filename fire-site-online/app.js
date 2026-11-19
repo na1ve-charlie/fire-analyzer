@@ -4,6 +4,7 @@ import { calculateFirePlan } from "./js/core/fire-engine.js";
 import { evaluateRiskRules } from "./js/core/risk-engine.js";
 import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js";
 import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js";
+import { runMonteCarlo, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js";
 
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
@@ -31,7 +32,10 @@ const DEFAULT_STATE = {
   dcaReturnRate: 6,
   dividendYield: 4,
   dividendEnabled: false,
-  dividendMode: "dividendOnly"
+  dividendMode: "dividendOnly",
+  mcProfile: "balanced",
+  mcRuns: 5000,
+  mcFlexibility: false
 };
 
 const state = {
@@ -44,6 +48,8 @@ let latestRisk = null;
 let latestSnapshot = null;
 let toastTimer = null;
 let resizeFrame = null;
+let mcTimer = null;
+let mcSequence = 0;
 const $ = (id) => document.getElementById(id);
 const moneyFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 
@@ -478,6 +484,7 @@ function updateAll() {
   `).join("");
 
   renderChart(projection.points, result.chartStart, result);
+  scheduleMonteCarlo();
 }
 
 function formatEvidenceValue(value, unit) {
@@ -784,6 +791,87 @@ function renderChart(points, principal, result = null) {
   overlay.addEventListener("pointercancel", hideTooltip);
 }
 
+// 参数变动频繁，蒙特卡洛做短防抖，避免拖动滑杆时反复计算数千条路径。
+function scheduleMonteCarlo() {
+  window.clearTimeout(mcTimer);
+  const token = ++mcSequence;
+  mcTimer = window.setTimeout(() => {
+    if (token !== mcSequence || !latestResult) return;
+    renderMonteCarlo(latestResult);
+  }, 180);
+}
+
+function renderMonteCarlo(result) {
+  if (!$("mcHistogram")) return;
+  const mc = runMonteCarlo({
+    fireResult: result,
+    fireInput: state,
+    profileKey: state.mcProfile,
+    runs: state.mcRuns,
+    seed: 20261119,
+    startingPrincipal: result.chartStart,
+    expenseFlexibility: state.mcFlexibility
+  });
+
+  setText("mcBadge", `${mc.runs.toLocaleString("zh-CN")} 次模拟 · ${mc.profile.label}`, false);
+  setText("mcLead", `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径；起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`, false);
+
+  $("mcParams").innerHTML = [
+    ["收益中枢 μ", formatPercent(mc.mu * 100)],
+    ["年波动率 σ", formatPercent(mc.sigma * 100)],
+    ["失败路径", `${mc.failedCount.toLocaleString("zh-CN")} 条`],
+    ["引擎版本", MC_ENGINE_VERSION]
+  ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+
+  const successRate = mc.successRate;
+  const rateClass = successRate >= 0.9 ? "good" : successRate < 0.75 ? "warn" : "";
+  $("mcKpis").className = `fund-results mc-kpis ${rateClass}`;
+  $("mcKpis").innerHTML = `
+    <article><span>${mc.years} 年存续成功率</span><strong>${(successRate * 100).toFixed(1)}%</strong><p>金鹅永续模式同时要求期末购买力不减</p></article>
+    <article><span>P10 期末资产</span><strong>${formatMoney(mc.p10End)}</strong><p>较差 10% 路径的期末资产</p></article>
+    <article><span>P50 期末资产</span><strong>${formatMoney(mc.p50End)}</strong><p>中位数路径的期末资产</p></article>
+    <article><span>P90 期末资产</span><strong>${formatMoney(mc.p90End)}</strong><p>较好 10% 路径的期末资产</p></article>`;
+
+  $("mcDistTable").innerHTML = `
+    <thead><tr><th>分位</th><th>期末资产</th><th>路径最低资产</th></tr></thead>
+    <tbody>
+      <tr><td>P10（较差 10%）</td><td>${formatMoney(mc.p10End)}</td><td>${formatMoney(mc.p10Min)}</td></tr>
+      <tr><td>P50（中位数）</td><td>${formatMoney(mc.p50End)}</td><td>${formatMoney(mc.p50Min)}</td></tr>
+      <tr><td>P90（较好 10%）</td><td>${formatMoney(mc.p90End)}</td><td>—</td></tr>
+    </tbody>`;
+
+  const svg = $("mcHistogram");
+  const width = Math.max(260, svg.clientWidth || 420);
+  const height = 180;
+  const margin = { top: 14, right: 10, bottom: 26, left: 34 };
+  const maxCount = Math.max(...mc.buckets.map((bucket) => bucket.count), 1);
+  const barWidth = (width - margin.left - margin.right) / mc.buckets.length;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.innerHTML = `
+    <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="var(--line)"/>
+    ${mc.buckets.map((bucket, index) => {
+      const barHeight = (height - margin.top - margin.bottom) * (bucket.count / maxCount);
+      const barX = margin.left + index * barWidth + barWidth * 0.15;
+      const centerX = margin.left + index * barWidth + barWidth / 2;
+      return `<rect x="${barX.toFixed(1)}" y="${(height - margin.bottom - barHeight).toFixed(1)}" width="${(barWidth * 0.7).toFixed(1)}" height="${Math.max(0, barHeight).toFixed(1)}" fill="var(--red)" opacity=".7" rx="3"/>
+        <text x="${centerX.toFixed(1)}" y="${height - 8}" text-anchor="middle" fill="var(--muted)" font-size="9">${bucket.label}</text>
+        ${bucket.count > 0 ? `<text x="${centerX.toFixed(1)}" y="${(height - margin.bottom - barHeight - 4).toFixed(1)}" text-anchor="middle" fill="var(--ink-soft)" font-size="9">${bucket.count}</text>` : ""}`;
+    }).join("")}`;
+
+  const error = mc.conservationMaxError;
+  const conservation = $("mcConservation");
+  conservation.className = `mc-conservation ${error < 0.01 ? "ok" : "bad"}`;
+  let note = successRate >= 0.9
+    ? "成功率较高，当前起点对该波动假设有较厚安全边际。"
+    : successRate >= 0.75
+      ? "成功率中等，可考虑提高本金、降低支出或开启支出弹性。"
+      : "成功率偏低：按该波动假设，较多路径会在测算期内耗尽，需要重点审视。";
+  if (state.mcFlexibility && mc.flexAppliedCount > 0) {
+    note += ` 支出弹性共触发 ${mc.flexAppliedCount} 次。`;
+  }
+  conservation.textContent = `${note} 资金守恒校验：${mc.runs.toLocaleString("zh-CN")} 条路径逐年误差最大 ${error.toFixed(4)} 元。`;
+}
+
 function syncScenarioButtons() {
   document.querySelectorAll(".scenario-option").forEach((button) => {
     button.classList.toggle("active", button.dataset.scenario === state.scenario);
@@ -835,9 +923,25 @@ function syncReserveRateButtons() {
   });
 }
 
+function syncMonteCarloControls() {
+  const groups = [
+    ["[data-mc-profile]", "mcProfile", "mcProfile"],
+    ["[data-mc-runs]", "mcRuns", "mcRuns", Number],
+    ["[data-mc-flex]", "mcFlexibility", "mcFlex", (value) => value === "true"]
+  ];
+  groups.forEach(([selector, stateKey, dataKey, transform = (value) => value]) => {
+    document.querySelectorAll(selector).forEach((button) => {
+      const active = transform(button.dataset[dataKey]) === state[stateKey];
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+  });
+}
+
 function syncControls() {
   syncScenarioButtons();
   syncCurveSourceButtons();
+  syncMonteCarloControls();
   syncMedicalControls();
   syncDividendControls();
   $("returnRate").value = state.returnRate;
@@ -1093,6 +1197,28 @@ document.querySelectorAll("[data-dca-inflation]").forEach((button) => {
     state.dcaInflationAdjust = button.dataset.dcaInflation === "true";
     syncDividendControls();
     updateAll();
+  });
+});
+
+document.querySelectorAll("[data-mc-profile]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.mcProfile = button.dataset.mcProfile;
+    syncMonteCarloControls();
+    scheduleMonteCarlo();
+  });
+});
+document.querySelectorAll("[data-mc-runs]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.mcRuns = Number(button.dataset.mcRuns);
+    syncMonteCarloControls();
+    scheduleMonteCarlo();
+  });
+});
+document.querySelectorAll("[data-mc-flex]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.mcFlexibility = button.dataset.mcFlex === "true";
+    syncMonteCarloControls();
+    scheduleMonteCarlo();
   });
 });
 

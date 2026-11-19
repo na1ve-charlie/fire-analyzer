@@ -34,6 +34,11 @@ function normalizeFireInputs(rawInput = {}) {
     dividendYield: clampNumber(rawInput.dividendYield, 0, 15, 4),
     dividendEnabled: rawInput.dividendEnabled === true,
     dividendMode: rawInput.dividendMode === "dividendPrincipal" ? "dividendPrincipal" : "dividendOnly",
+    // 蒙特卡洛逐路径注入的年度收益率（小数）；仅影响展示用现金流，不参与反推求解。
+    returnPath: Array.isArray(rawInput.returnPath) ? rawInput.returnPath.map((value) => Number(value)) : null,
+    expenseFlexibility: rawInput.expenseFlexibility === true,
+    flexibilityDrawdown: clampNumber(rawInput.flexibilityDrawdown, 0, 0.8, 0.2),
+    flexibilityCut: clampNumber(rawInput.flexibilityCut, 0, 0.5, 0.1),
     expenses: normalizeExpenses(rawInput.expenses)
   };
 }
@@ -54,10 +59,18 @@ function simulateProjection(
   inflation,
   years,
   annualReserveInterest = 0,
-  dividendIncomeByYear = []
+  dividendIncomeByYear = [],
+  options = {}
 ) {
+  const {
+    returnPath = null,
+    expenseFlexibility = false,
+    flexibilityDrawdown = 0.2,
+    flexibilityCut = 0.1
+  } = options;
   const points = [{
     year: 0,
+    yearReturn: 0,
     startBalance: principal,
     investmentReturn: 0,
     grossExpense: 0,
@@ -66,17 +79,28 @@ function simulateProjection(
     dividendOffset: 0,
     expense: 0,
     withdrawal: 0,
-    balance: principal
+    balance: principal,
+    drawdown: 0,
+    flexApplied: false
   }];
   let balance = principal;
   let depletionYear = null;
   let totalWithdrawals = 0;
+  let peakBalance = principal;
 
   for (let year = 1; year <= years; year += 1) {
     const startBalance = balance;
-    const investmentReturn = startBalance * annualReturn;
+    // 蒙特卡洛路径覆盖当年收益率；未注入时沿用场景固定收益率。
+    const yearReturn = returnPath && Number.isFinite(Number(returnPath[year - 1]))
+      ? Number(returnPath[year - 1])
+      : annualReturn;
+    const investmentReturn = startBalance * yearReturn;
     const available = startBalance + investmentReturn;
-    const grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
+    let grossExpense = annualExpense * Math.pow(1 + inflation, year - 1);
+    peakBalance = Math.max(peakBalance, startBalance);
+    const drawdown = peakBalance > 0 ? 1 - startBalance / peakBalance : 0;
+    const flexApplied = expenseFlexibility && drawdown > flexibilityDrawdown;
+    if (flexApplied) grossExpense *= 1 - flexibilityCut;
     const reserveOffset = Math.min(grossExpense, Math.max(0, annualReserveInterest));
     const dividendIncome = Math.max(0, Number(dividendIncomeByYear[year]) || 0);
     const dividendOffset = Math.min(grossExpense - reserveOffset, dividendIncome);
@@ -87,6 +111,7 @@ function simulateProjection(
     if (expense > available + 0.01 && depletionYear === null) depletionYear = year;
     points.push({
       year,
+      yearReturn,
       startBalance,
       investmentReturn,
       grossExpense,
@@ -95,11 +120,37 @@ function simulateProjection(
       dividendOffset,
       expense,
       withdrawal,
-      balance
+      balance,
+      drawdown,
+      flexApplied
     });
   }
 
-  return { points, depletionYear, totalWithdrawals };
+  return {
+    points,
+    depletionYear,
+    totalWithdrawals,
+    minBalance: Math.min(...points.map((point) => point.balance))
+  };
+}
+
+// 蒙特卡洛专用入口：复用与正式现金流完全相同的记账逻辑，但允许逐路径注入收益率与支出弹性。
+export function simulateCustomProjection(options = {}) {
+  return simulateProjection(
+    options.principal,
+    options.annualExpense,
+    options.annualReturn,
+    options.inflation,
+    options.years,
+    options.annualReserveInterest || 0,
+    options.dividendIncomeByYear || [],
+    {
+      returnPath: options.returnPath || null,
+      expenseFlexibility: options.expenseFlexibility === true,
+      flexibilityDrawdown: options.flexibilityDrawdown,
+      flexibilityCut: options.flexibilityCut
+    }
+  );
 }
 
 // 与 reservePlan 完全同一口径：某投资本金对应的储备年利息 =（医疗储备 + 10% 安全垫）× 储备利率。
@@ -375,7 +426,16 @@ export function calculateFirePlan(rawInput = {}) {
   }
 
   const chartStart = input.curveSource === "target" && reverse !== null ? reverse : input.principal;
-  const projection = simulateProjection(chartStart, annual, annualReturn, inflation, input.years, annualReserveInterest, dividendPlan.dividendIncomeByYear);
+  const projection = simulateProjection(
+    chartStart, annual, annualReturn, inflation, input.years,
+    annualReserveInterest, dividendPlan.dividendIncomeByYear,
+    {
+      returnPath: input.returnPath,
+      expenseFlexibility: input.expenseFlexibility,
+      flexibilityDrawdown: input.flexibilityDrawdown,
+      flexibilityCut: input.flexibilityCut
+    }
+  );
   projection.turningPoint = findTurningPoint(projection.points);
   const finalPoint = projection.points[input.years];
   const realEndBalance = finalPoint.balance / Math.pow(1 + inflation, input.years);
