@@ -242,3 +242,156 @@ export function runMonteCarlo({
     flexAppliedCount
   };
 }
+
+// 每条随机路径反推「刚好能走完」的最小本金；其分位数即为达到目标成功率所需本金。
+export function computeRequiredPrincipalDistribution({
+  fireResult,
+  fireInput = {},
+  profileKey = "myPortfolio",
+  runs = 2000,
+  seed = 20261119,
+  startingPrincipal,
+  expenseCut = 0,
+  extraMonthlyIncome = 0,
+  expenseFlexibility = false,
+  flexibilityDrawdown = 0.2,
+  flexibilityCut = 0.1
+} = {}) {
+  if (!fireResult || !fireResult.assumptions) {
+    throw new Error("computeRequiredPrincipalDistribution 需要 calculateFirePlan 的结果");
+  }
+  const profile = MC_PROFILES[profileKey] ? MC_PROFILES[profileKey] : MC_PROFILES.balanced;
+  const stats = profile.holdings ? computePortfolioStats(profile.holdings) : null;
+  const runCount = Math.round(clamp(runs, 100, 5000, 2000));
+  const randomSeed = Math.floor(clamp(seed, 0, 2147483647, 20261119));
+  const years = Math.round(clamp(fireInput.years ?? fireResult.assumptions.years, 1, 80, 50));
+  const mu = stats ? stats.mu : clamp((fireInput.returnRate ?? fireResult.assumptions.returnRate) / 100, -0.99, 1, 0.05);
+  const sigma = clamp(stats ? stats.sigma * 100 : profile.sigma, 0, 100, profile.sigma) / 100;
+  const sigmaLog = sigma > 0 ? Math.log(1 + sigma) : 0;
+  const muLog = Math.log(1 + mu);
+  const inflation = Number(fireResult.inflation) || 0;
+  const annualReserveInterest = Number(fireResult.reservePlan?.annualReserveInterest) || 0;
+  const dividendIncomeByYear = fireResult.dividendPlan?.enabled
+    ? fireResult.dividendPlan.dividendIncomeByYear
+    : new Array(years + 1).fill(0);
+  const isEndowment = (fireInput.scenario ?? fireResult.assumptions.scenario) === "endowment";
+  const annualExpense = Math.max(0, Number(fireResult.annual) * (1 - clamp(expenseCut, 0, 0.9, 0))
+    - Number(extraMonthlyIncome) * 12);
+
+  const required = [];
+  for (let index = 0; index < runCount; index += 1) {
+    const rand = mulberry32(randomSeed + index * 7919);
+    const returnPath = new Array(years);
+    for (let year = 0; year < years; year += 1) {
+      returnPath[year] = Math.exp(muLog + sigmaLog * standardNormal(rand)) - 1;
+    }
+
+    const isEnough = (principal) => {
+      const simulation = simulateCustomProjection({
+        principal, annualExpense, annualReturn: mu, inflation, years,
+        annualReserveInterest, dividendIncomeByYear, returnPath,
+        expenseFlexibility, flexibilityDrawdown, flexibilityCut
+      });
+      const shortfall = simulation.points.some((point) => (
+        point.expense - (point.startBalance + point.investmentReturn) > 1
+      ));
+      if (shortfall) return false;
+      if (isEndowment) {
+        const realEnd = simulation.points[years].balance / Math.pow(1 + inflation, years);
+        if (realEnd < principal - 1) return false;
+      }
+      return true;
+    };
+
+    let low = 0;
+    let high = Math.max(startingPrincipal || 0, fireResult.conservative || 0, annualExpense * years, 1);
+    let guard = 0;
+    while (!isEnough(high) && guard < 30) { high *= 1.3; guard += 1; }
+    for (let step = 0; step < 36; step += 1) {
+      const middle = (low + high) / 2;
+      if (isEnough(middle)) high = middle; else low = middle;
+    }
+    required.push(high);
+  }
+
+  const sorted = required.sort((a, b) => a - b);
+  return {
+    runs: runCount,
+    seed: randomSeed,
+    profileKey: profile.holdings ? profileKey : "balanced",
+    mu, sigma, annualExpense,
+    sorted,
+    p50: percentile(sorted, 0.5),
+    p80: percentile(sorted, 0.8),
+    p90: percentile(sorted, 0.9),
+    p95: percentile(sorted, 0.95)
+  };
+}
+
+// 一键汇总可用的胜率杠杆：目标本金分位、单项调整效果、配置对比。
+export function analyzeSuccessLevers({
+  fireResult,
+  fireInput = {},
+  targetRate = 0.9,
+  runs = 2000,
+  seed = 20261119,
+  startingPrincipal,
+  profileKey = "myPortfolio"
+} = {}) {
+  const target = clamp(targetRate, 0.5, 0.99, 0.9);
+  const common = { fireResult, fireInput, runs, seed, startingPrincipal, profileKey };
+  const required = computeRequiredPrincipalDistribution({ ...common });
+  const baseline = runMonteCarlo({ ...common });
+  const targetPrincipal = percentile(required.sorted, target);
+
+  const levers = [];
+  for (const cut of [0.1, 0.2]) {
+    const mc = runMonteCarlo({
+      ...common,
+      fireResult: { ...fireResult, annual: fireResult.annual * (1 - cut) }
+    });
+    levers.push({ label: `支出降低 ${(cut * 100).toFixed(0)}%`, detail: `年支出降至 ${formatPlain(fireResult.annual * (1 - cut))}`, successRate: mc.successRate });
+  }
+  for (const extra of [1000, 2000]) {
+    const mc = runMonteCarlo({
+      ...common,
+      fireResult: { ...fireResult, annual: Math.max(0, fireResult.annual - extra * 12) }
+    });
+    levers.push({ label: `每月多 ${formatPlain(extra)} 收入`, detail: `相当于年支出减少 ${formatPlain(extra * 12)}`, successRate: mc.successRate });
+  }
+  const delayPrincipal = (years) => {
+    const rate = baseline.mu;
+    const dcaMonthly = Number(fireInput.dcaMonthly ?? fireResult.assumptions.dcaMonthly) || 0;
+    const factor = Math.pow(1 + rate, years);
+    const contribution = rate > 0
+      ? dcaMonthly * 12 * (factor - 1) / rate
+      : dcaMonthly * 12 * years;
+    return startingPrincipal * factor + contribution;
+  };
+  for (const delay of [3, 5]) {
+    const grown = delayPrincipal(delay);
+    const mc = runMonteCarlo({ ...common, startingPrincipal: grown });
+    levers.push({ label: `推迟 ${delay} 年 FIRE`, detail: `继续定投后本金约 ${formatPlain(grown)}`, successRate: mc.successRate });
+  }
+
+  const profiles = Object.keys(MC_PROFILES).map((key) => ({
+    key,
+    label: MC_PROFILES[key].label,
+    successRate: runMonteCarlo({ ...common, profileKey: key }).successRate
+  }));
+
+  return {
+    targetRate: target,
+    targetPrincipal,
+    currentPrincipal: startingPrincipal,
+    gap: targetPrincipal - startingPrincipal,
+    baselineSuccessRate: baseline.successRate,
+    required,
+    levers,
+    profiles
+  };
+}
+
+function formatPlain(value) {
+  return `¥${Math.round(Number(value) || 0).toLocaleString("zh-CN")}`;
+}

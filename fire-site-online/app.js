@@ -4,7 +4,7 @@ import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261119c";
 import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261119c";
 import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261119c";
 import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261119c";
-import { runMonteCarlo, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js?v=20261119c";
+import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js?v=20261119c";
 
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
@@ -35,7 +35,8 @@ const DEFAULT_STATE = {
   dividendMode: "dividendOnly",
   mcProfile: "myPortfolio",
   mcRuns: 5000,
-  mcFlexibility: false
+  mcFlexibility: false,
+  mcTargetRate: 0.9
 };
 
 const state = {
@@ -51,6 +52,8 @@ let resizeFrame = null;
 let mcTimer = null;
 let mcSequence = 0;
 let mcInitialized = false;
+let leverInitialized = false;
+let leverBusy = false;
 const $ = (id) => document.getElementById(id);
 const moneyFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 
@@ -898,6 +901,67 @@ function renderMonteCarlo(result) {
     note += ` 支出弹性共触发 ${mc.flexAppliedCount} 次。`;
   }
   conservation.textContent = `${note} 资金守恒校验：${mc.runs.toLocaleString("zh-CN")} 条路径逐年误差最大 ${error.toFixed(4)} 元。`;
+  if (!leverInitialized) {
+    leverInitialized = true;
+    window.setTimeout(() => runLeverAnalysis(800), 60);
+  }
+}
+
+function runLeverAnalysis(runs = 1500) {
+  if (leverBusy || !latestResult || !$("runLeverAnalysis")) return;
+  leverBusy = true;
+  const button = $("runLeverAnalysis");
+  button.disabled = true;
+  button.textContent = "计算中…";
+  window.setTimeout(() => {
+    try {
+      const analysis = analyzeSuccessLevers({
+        fireResult: latestResult,
+        fireInput: state,
+        targetRate: state.mcTargetRate,
+        runs,
+        seed: 20261119,
+        startingPrincipal: latestResult.chartStart,
+        profileKey: state.mcProfile
+      });
+      renderLeverAnalysis(analysis);
+    } catch (error) {
+      $("leverBadge").textContent = "计算失败";
+    } finally {
+      leverBusy = false;
+      button.disabled = false;
+      button.textContent = "重新计算";
+    }
+  }, 20);
+}
+
+function renderLeverAnalysis(analysis) {
+  const pct = (value) => `${(value * 100).toFixed(1)}%`;
+  setText("leverBadge", `目标 ${(analysis.targetRate * 100).toFixed(0)}% · ${analysis.required.runs.toLocaleString("zh-CN")} 条路径`, false);
+  $("leverHero").innerHTML = `
+    <article><span>当前方案成功率</span><strong>${pct(analysis.baselineSuccessRate)}</strong><p>当前本金 ${formatMoney(analysis.currentPrincipal)}</p></article>
+    <article><span>达标所需本金</span><strong>${formatMoney(analysis.targetPrincipal)}</strong><p>按 ${(analysis.targetRate * 100).toFixed(0)}% 分位反推</p></article>
+    <article><span>距离目标缺口</span><strong>${analysis.gap > 1 ? formatMoney(analysis.gap) : "已达标"}</strong><p>${analysis.gap > 1 ? "需要补足的投资本金" : "当前本金已覆盖目标胜率"}</p></article>`;
+
+  const rows = [
+    { label: "当前方案", detail: "维持当前本金与支出", successRate: analysis.baselineSuccessRate },
+    ...analysis.levers
+  ];
+  const bestRate = Math.max(...rows.map((row) => row.successRate));
+  $("leverTable").innerHTML = `
+    <thead><tr><th>调整方式</th><th>说明</th><th>成功率</th><th>提升</th></tr></thead>
+    <tbody>${rows.map((row) => `
+      <tr class="${row.successRate === bestRate ? "best-row" : ""}">
+        <td>${row.label}</td><td>${row.detail}</td><td>${pct(row.successRate)}</td>
+        <td>${pct(row.successRate - analysis.baselineSuccessRate)}</td>
+      </tr>`).join("")}</tbody>`;
+
+  $("profileTable").innerHTML = `
+    <thead><tr><th>资产配置</th><th>成功率</th></tr></thead>
+    <tbody>${analysis.profiles.map((profile) => `
+      <tr class="${profile.successRate === Math.max(...analysis.profiles.map((item) => item.successRate)) ? "best-row" : ""}">
+        <td>${profile.label}</td><td>${pct(profile.successRate)}</td>
+      </tr>`).join("")}</tbody>`;
 }
 
 function syncScenarioButtons() {
@@ -955,7 +1019,8 @@ function syncMonteCarloControls() {
   const groups = [
     ["[data-mc-profile]", "mcProfile", "mcProfile"],
     ["[data-mc-runs]", "mcRuns", "mcRuns", Number],
-    ["[data-mc-flex]", "mcFlexibility", "mcFlex", (value) => value === "true"]
+    ["[data-mc-flex]", "mcFlexibility", "mcFlex", (value) => value === "true"],
+    ["[data-target-rate]", "mcTargetRate", "targetRate", Number]
   ];
   groups.forEach(([selector, stateKey, dataKey, transform = (value) => value]) => {
     document.querySelectorAll(selector).forEach((button) => {
@@ -1249,6 +1314,15 @@ document.querySelectorAll("[data-mc-flex]").forEach((button) => {
     scheduleMonteCarlo();
   });
 });
+
+document.querySelectorAll("[data-target-rate]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.mcTargetRate = Number(button.dataset.targetRate);
+    syncMonteCarloControls();
+    runLeverAnalysis();
+  });
+});
+$("runLeverAnalysis").addEventListener("click", () => runLeverAnalysis());
 
 document.querySelectorAll("[data-amount]").forEach((button) => {
   button.addEventListener("click", () => {

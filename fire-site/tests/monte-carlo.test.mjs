@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateFirePlan, simulateCustomProjection } from "../js/core/fire-engine.js";
-import { runMonteCarlo, MC_PROFILES, MC_ENGINE_VERSION, computePortfolioStats } from "../js/core/monte-carlo.js";
+import {
+  runMonteCarlo, MC_PROFILES, MC_ENGINE_VERSION, computePortfolioStats,
+  computeRequiredPrincipalDistribution, analyzeSuccessLevers
+} from "../js/core/monte-carlo.js";
 
 const baseInput = {
   scenario: "drawdown",
@@ -153,4 +156,34 @@ test("我的组合预设使用组合自身中枢而非全局收益率", () => {
   assert.ok(Math.abs(result.mu - result.portfolioStats.mu) < 1e-9);
   assert.ok(Math.abs(result.sigma - result.portfolioStats.sigma) < 1e-9);
   assert.equal(result.holdings.length, 6);
+});
+
+test("反推本金分位随目标胜率单调上升", () => {
+  const dist = computeRequiredPrincipalDistribution({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    profileKey: "myPortfolio",
+    runs: 300,
+    startingPrincipal: baseResult.chartStart
+  });
+  assert.ok(dist.p50 <= dist.p80);
+  assert.ok(dist.p80 <= dist.p90);
+  assert.ok(dist.p90 <= dist.p95);
+});
+
+test("胜率工具箱输出目标本金与多种提升杠杆", () => {
+  const analysis = analyzeSuccessLevers({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    targetRate: 0.9,
+    runs: 300,
+    startingPrincipal: baseResult.chartStart,
+    profileKey: "myPortfolio"
+  });
+  assert.ok(analysis.targetPrincipal > 0);
+  assert.ok(analysis.baselineSuccessRate >= 0 && analysis.baselineSuccessRate <= 1);
+  assert.equal(analysis.levers.length, 6);
+  assert.equal(analysis.profiles.length, Object.keys(MC_PROFILES).length);
+  assert.ok(analysis.levers.some((item) => item.label.includes("支出降低")));
+  assert.ok(analysis.levers.some((item) => item.label.includes("推迟")));
 });

@@ -371,7 +371,10 @@ html[data-theme="dark"] .medical-input-wrap { background: #1f1b13; }
 .fund-scenario { margin-top: 16px; }
 .fund-scenario-title { margin-bottom: 10px; color: var(--ink-soft); font-size: 11px; font-weight: 650; }
 
-.monte-carlo-panel { padding: 28px; }
+.monte-carlo-panel, .lever-panel { padding: 28px; }
+.lever-hero { margin-top: 14px; }
+.best-row { color: var(--teal); font-weight: 650; }
+.lever-panel th, .lever-panel td { padding: 9px 6px; font-size: 11px; }
 .mc-params { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0 16px; }
 .mc-params article { min-width: 0; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
 .mc-params span { display: block; color: var(--muted); font-size: 9px; }

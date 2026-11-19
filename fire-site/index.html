@@ -390,6 +390,34 @@
           <p class="panel-footnote">收益路径按对数正态分布生成，年化中枢取当前「年化收益率」，波动率由资产配置预设决定；固定随机种子 20261119，结果可复现。该模拟只改变波动假设，不修改上方确定性测算与反推本金。参数为示意假设，非市场预测，不构成投资建议。</p>
         </section>
 
+        <section class="panel lever-panel" id="levers">
+          <div class="section-heading">
+            <div><p class="section-kicker">SUCCESS TOOLKIT</p><h2>胜率提升工具箱</h2></div>
+            <span class="soft-badge" id="leverBadge">—</span>
+          </div>
+          <p class="fund-lead">基于当前蒙特卡洛路径，反推达到目标胜率所需本金，并对比几种最有效的调整方式。</p>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="目标成功率">
+              <button type="button" data-target-rate="0.8">目标 80%</button>
+              <button type="button" data-target-rate="0.9" class="active">目标 90%</button>
+              <button type="button" data-target-rate="0.95">目标 95%</button>
+            </div>
+            <button class="button button-ghost" id="runLeverAnalysis" type="button">计算提升方案</button>
+          </div>
+          <div class="fund-results lever-hero" id="leverHero"></div>
+          <div class="mc-columns">
+            <div>
+              <div class="fund-scenario-title">单项调整的效果</div>
+              <div class="table-wrap"><table id="leverTable"></table></div>
+            </div>
+            <div>
+              <div class="fund-scenario-title">资产配置对比（当前本金）</div>
+              <div class="table-wrap"><table id="profileTable"></table></div>
+            </div>
+          </div>
+          <p class="panel-footnote">反推本金按每条随机路径求「刚好不耗尽」的最小本金，再取目标分位；结果受回测样本与模型假设限制，不构成投资建议。</p>
+        </section>
+
         <section class="panel workspace-panel" id="workspace">
           <div class="section-heading">
             <div><p class="section-kicker">WORKSPACE</p><h2>方案快照与数据</h2></div>
