@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateFirePlan, simulateCustomProjection } from "../js/core/fire-engine.js";
 import {
-  runMonteCarlo, MC_PROFILES, MC_ENGINE_VERSION, computePortfolioStats,
+  runMonteCarlo, MC_PROFILES, MC_ENGINE_VERSION, MC_PROFILE_GROUPS, computePortfolioStats,
   computeRequiredPrincipalDistribution, analyzeSuccessLevers
 } from "../js/core/monte-carlo.js";
 
@@ -133,29 +133,77 @@ test("现金流入口在支出被削减时仍保持守恒", () => {
   assert.ok(result.points.some((point) => point.flexApplied));
 });
 
-test("我的组合持仓权重与截图一致", () => {
-  const holdings = MC_PROFILES.myPortfolio.holdings;
-  assert.equal(holdings.reduce((sum, item) => sum + item.weight, 0), 100);
-  assert.deepEqual(holdings.map((item) => item.weight), [42, 18, 4.5, 4.5, 21, 10]);
-  const micro = holdings.find((item) => item.name === "量化微盘");
-  assert.ok(micro.fund.includes("华夏新锦绣"));
+test("六个校准组合持仓权重合计为 100%", () => {
+  for (const key of MC_PROFILE_GROUPS.calibratedNames) {
+    const profile = MC_PROFILES[key];
+    assert.ok(profile.calibrated, `${key} 应为回测校准组合`);
+    assert.equal(profile.holdings.reduce((sum, item) => sum + item.weight, 0), 100);
+  }
+  assert.deepEqual(MC_PROFILES.portfolioA.holdings.map((item) => item.weight), [60, 18, 7.5, 4.5, 10]);
+  for (const key of ["portfolioB57", "portfolioB10y", "portfolioB30y", "portfolioB10etf", "portfolioB30etf"]) {
+    assert.deepEqual(
+      MC_PROFILES[key].holdings.map((item) => item.weight),
+      [42, 18, 7.5, 4.5, 18, 10]
+    );
+  }
+  const bond57 = MC_PROFILES.portfolioB57.holdings.find((item) => item.name === "5–7年利率债");
+  assert.ok(bond57.fund.includes("CBA05841.CB"));
+  const bond30etf = MC_PROFILES.portfolioB30etf.holdings.find((item) => item.name === "30年国债ETF");
+  assert.ok(bond30etf.fund.includes("511090.SH"));
 });
 
-test("组合收益与波动按近十年回测数据加权计算", () => {
-  const stats = computePortfolioStats(MC_PROFILES.myPortfolio.holdings);
-  assert.ok(Math.abs(stats.mu - 0.0674365) < 1e-6);
-  assert.ok(stats.sigma > 0.11 && stats.sigma < 0.14);
-  assert.equal(MC_PROFILES.myPortfolio.backtest.cagr, 6.73);
-  assert.equal(MC_PROFILES.myPortfolio.backtest.maxDrawdown, -20.15);
+test("六个组合使用各自回测样本的中枢与波动率", () => {
+  // 组合一：2007 年以来长样本。
+  assert.equal(MC_PROFILES.portfolioA.backtest.period, "2007-01-04 ~ 2026-11-09");
+  assert.equal(MC_PROFILES.portfolioA.backtest.cagr, 13.48);
+  assert.equal(MC_PROFILES.portfolioA.backtest.volatility, 17.43);
+  assert.equal(MC_PROFILES.portfolioA.backtest.maxDrawdown, -54.49);
+  assert.equal(MC_PROFILES.portfolioA.backtest.sharpe, 0.76);
+  // 组合二指数版：同一 2011 年起样本。
+  for (const key of ["portfolioB57", "portfolioB10y", "portfolioB30y"]) {
+    assert.equal(MC_PROFILES[key].backtest.period, MC_PROFILE_GROUPS.indexSample);
+  }
+  assert.equal(MC_PROFILES.portfolioB57.backtest.cagr, 10.75);
+  assert.equal(MC_PROFILES.portfolioB57.backtest.volatility, 10.74);
+  assert.equal(MC_PROFILES.portfolioB57.backtest.maxDrawdown, -22.18);
+  assert.equal(MC_PROFILES.portfolioB57.backtest.sharpe, 0.91);
+  assert.equal(MC_PROFILES.portfolioB10y.backtest.cagr, 10.73);
+  assert.equal(MC_PROFILES.portfolioB10y.backtest.volatility, 10.73);
+  assert.equal(MC_PROFILES.portfolioB10y.backtest.maxDrawdown, -22.2);
+  assert.equal(MC_PROFILES.portfolioB10y.backtest.sharpe, 0.91);
+  assert.equal(MC_PROFILES.portfolioB30y.backtest.cagr, 11.12);
+  assert.equal(MC_PROFILES.portfolioB30y.backtest.volatility, 10.73);
+  assert.equal(MC_PROFILES.portfolioB30y.backtest.maxDrawdown, -21.87);
+  assert.equal(MC_PROFILES.portfolioB30y.backtest.sharpe, 0.94);
+  // 组合二 ETF 版：同一 2023-06 起短样本。
+  for (const key of ["portfolioB10etf", "portfolioB30etf"]) {
+    assert.equal(MC_PROFILES[key].backtest.period, MC_PROFILE_GROUPS.etfSample);
+  }
+  assert.equal(MC_PROFILES.portfolioB10etf.backtest.cagr, 10.98);
+  assert.equal(MC_PROFILES.portfolioB10etf.backtest.volatility, 8.55);
+  assert.equal(MC_PROFILES.portfolioB10etf.backtest.maxDrawdown, -6.71);
+  assert.equal(MC_PROFILES.portfolioB10etf.backtest.sharpe, 1.15);
+  assert.equal(MC_PROFILES.portfolioB30etf.backtest.cagr, 11.62);
+  assert.equal(MC_PROFILES.portfolioB30etf.backtest.volatility, 8.51);
+  assert.equal(MC_PROFILES.portfolioB30etf.backtest.maxDrawdown, -6.27);
+  assert.equal(MC_PROFILES.portfolioB30etf.backtest.sharpe, 1.23);
 });
 
-test("我的组合预设使用组合自身中枢而非全局收益率", () => {
-  const result = simulate({ profileKey: "myPortfolio" });
-  assert.equal(result.profileKey, "myPortfolio");
-  assert.notEqual(result.mu, baseInput.returnRate / 100);
-  assert.ok(Math.abs(result.mu - result.portfolioStats.mu) < 1e-9);
-  assert.ok(Math.abs(result.sigma - result.portfolioStats.sigma) < 1e-9);
-  assert.equal(result.holdings.length, 6);
+test("校准组合直接使用回测 CAGR 与波动率而非持仓推算", () => {
+  const result = simulate({ profileKey: "portfolioA" });
+  assert.equal(result.profileKey, "portfolioA");
+  assert.equal(result.portfolioStats, null);
+  assert.ok(Math.abs(result.mu - MC_PROFILES.portfolioA.backtest.cagr / 100) < 1e-9);
+  assert.ok(Math.abs(result.sigma - MC_PROFILES.portfolioA.backtest.volatility / 100) < 1e-9);
+  assert.equal(result.holdings.length, 5);
+  const stable = simulate({ profileKey: "portfolioB57" });
+  assert.ok(stable.sigma < result.sigma, "组合二 5–7 年基线波动应低于组合一");
+  const bond10Etf = simulate({ profileKey: "portfolioB10etf" });
+  assert.ok(Math.abs(bond10Etf.mu - 0.1098) < 1e-9);
+  assert.ok(Math.abs(bond10Etf.sigma - 0.0855) < 1e-9);
+  const bond30Etf = simulate({ profileKey: "portfolioB30etf" });
+  assert.ok(Math.abs(bond30Etf.mu - 0.1162) < 1e-9);
+  assert.ok(bond30Etf.holdings.length, 6);
 });
 
 test("全盘口径：手动本金变化会同步改变 MC 起点与成功率", () => {
@@ -171,11 +219,43 @@ test("全盘口径：手动本金变化会同步改变 MC 起点与成功率", (
   assert.ok(highMc.successRate > lowMc.successRate);
 });
 
+test("失败归因：主因分布合计等于失败数，反事实救活率在 0~1 之间", () => {
+  const result = simulate({ profileKey: "balanced", startingPrincipal: baseResult.reverse, withAttribution: true });
+  const attr = result.failureAttribution;
+  assert.ok(attr, "应产出失败归因");
+  assert.equal(attr.failedCount, result.failedCount);
+  const primaryTotal = attr.primary.reduce((sum, item) => sum + item.count, 0);
+  assert.equal(primaryTotal, result.failedCount);
+  assert.ok(Math.abs(attr.primary.reduce((sum, item) => sum + item.share, 0) - 1) < 1e-9);
+  for (const remedy of attr.remedies) {
+    assert.ok(remedy.share >= 0 && remedy.share <= 1);
+    assert.ok(remedy.rescued >= 0 && remedy.rescued <= result.failedCount);
+  }
+  assert.ok(attr.geoSuccess > attr.geoFailed, "成功路径几何收益应高于失败路径");
+});
+
+test("失败归因：无失败路径时不产出归因", () => {
+  const safe = simulate({ sigmaOverride: 0, startingPrincipal: baseResult.conservative * 3, withAttribution: true });
+  assert.equal(safe.failedCount, 0);
+  assert.equal(safe.failureAttribution, null);
+});
+
+test("失败归因：高波动组合的主因更偏向顺序风险与极端亏损", () => {
+  const common = { withAttribution: true, runs: 600, startingPrincipal: baseResult.reverse };
+  const stable = simulate({ ...common, profileKey: "balanced" });
+  const volatile = simulate({ ...common, profileKey: "equity100" });
+  const shareOf = (attr, key) => attr.primary.find((p) => p.key === key).share;
+  const stableRisk = shareOf(stable.failureAttribution, "order") + shareOf(stable.failureAttribution, "tail");
+  const volatileRisk = shareOf(volatile.failureAttribution, "order") + shareOf(volatile.failureAttribution, "tail");
+  assert.ok(volatileRisk > 0.5, "高波动下顺序/尾部风险应占主导");
+  assert.ok(volatileRisk >= stableRisk, "高波动下顺序/尾部风险占比不应低于低波动");
+});
+
 test("反推本金分位随目标胜率单调上升", () => {
   const dist = computeRequiredPrincipalDistribution({
     fireResult: baseResult,
     fireInput: baseInput,
-    profileKey: "myPortfolio",
+    profileKey: "portfolioA",
     runs: 300,
     startingPrincipal: baseResult.chartStart
   });
@@ -191,7 +271,7 @@ test("胜率工具箱输出目标本金与多种提升杠杆", () => {
     targetRate: 0.9,
     runs: 300,
     startingPrincipal: baseResult.chartStart,
-    profileKey: "myPortfolio"
+    profileKey: "portfolioA"
   });
   assert.ok(analysis.targetPrincipal > 0);
   assert.ok(analysis.baselineSuccessRate >= 0 && analysis.baselineSuccessRate <= 1);

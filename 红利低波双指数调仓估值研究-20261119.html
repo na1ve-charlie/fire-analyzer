@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红利低波双指数调仓效应与估值变化研究</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --text:#1f2430; --muted:#68718a; --border:#e6e9f0;
+    --accent:#1d4ed8; --accent-soft:#eaf0ff; --up:#d92b2b; --down:#12996a;
+    --chip:#f0f2f7; --shadow:0 1px 3px rgba(20,30,60,.06),0 8px 24px rgba(20,30,60,.04);
+    --axis:#8b93a7; --split:#eef0f5;
+  }
+  html[data-theme="dark"]{
+    --bg:#11141b; --card:#1a1e27; --text:#e8ebf2; --muted:#9aa3b5; --border:#2b313d;
+    --accent:#7aa7ff; --accent-soft:#1e2a44; --up:#ff5f5f; --down:#38c893;
+    --chip:#232936; --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    --axis:#7c869c; --split:#262c38;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:34px 22px 80px}
+  header.top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+  .kicker{font-size:12px;letter-spacing:.14em;color:var(--accent);font-weight:700;text-transform:uppercase}
+  h1{font-size:29px;line-height:1.35;margin:8px 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14px;margin:0}
+  .meta{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap}
+  .meta span{font-size:12px;color:var(--muted);background:var(--chip);border-radius:20px;padding:4px 12px}
+  .theme-btn{border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 14px;font-size:13px;cursor:pointer;box-shadow:var(--shadow);white-space:nowrap;transition:.2s}
+  .theme-btn:hover{border-color:var(--accent)}
+  section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px 28px;margin-top:22px;box-shadow:var(--shadow)}
+  h2{font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .no{font-size:12px;color:#fff;background:var(--accent);width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+  .lead{color:var(--muted);font-size:13.5px;margin:6px 0 20px}
+  h3{font-size:15px;margin:24px 0 10px;color:var(--text)}
+  /* TLDR */
+  .tldr{background:linear-gradient(135deg,var(--accent-soft),transparent 70%);border:1px solid var(--border)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:4px}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+  .kpi .big{font-size:26px;font-weight:800;line-height:1.2;letter-spacing:-.02em}
+  .kpi .lbl{font-size:12.5px;color:var(--muted);margin-top:5px}
+  .up{color:var(--up)} .down{color:var(--down)} .acc{color:var(--accent)}
+  ul.pts{margin:16px 0 0;padding-left:0;list-style:none;display:grid;gap:9px}
+  ul.pts li{position:relative;padding-left:22px;font-size:14px}
+  ul.pts li::before{content:"";position:absolute;left:4px;top:9px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+  /* cards row */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
+  @media(max-width:720px){.duo{grid-template-columns:1fr}}
+  .mini{border:1px solid var(--border);border-radius:12px;padding:16px 18px;background:var(--bg)}
+  .mini h4{margin:0 0 8px;font-size:14px}
+  .mini p{margin:0;font-size:13px;color:var(--muted)}
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0;font-size:13px}
+  .flow .box{background:var(--chip);border:1px solid var(--border);border-radius:9px;padding:8px 12px}
+  .flow .arw{color:var(--accent);font-weight:700}
+  /* table */
+  .tbl-wrap{overflow-x:auto;margin-top:8px;border:1px solid var(--border);border-radius:11px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th,td{padding:9px 11px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border)}
+  th{background:var(--chip);color:var(--muted);font-weight:600;position:sticky;top:0}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr:hover{background:var(--accent-soft)}
+  tbody tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:5px;font-weight:600}
+  .tag.ok{background:rgba(18,153,106,.13);color:var(--down)}
+  .tag.ap{background:rgba(217,43,43,.12);color:var(--up)}
+  .tag.lim{background:var(--chip);color:var(--muted)}
+  /* chart */
+  .chart-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:20px 0 4px;flex-wrap:wrap}
+  .chart-title{font-size:14px;font-weight:600}
+  .toggle{border:1px solid var(--border);background:var(--chip);color:var(--muted);border-radius:8px;font-size:12px;padding:5px 12px;cursor:pointer;transition:.2s}
+  .toggle.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+  .chart{width:100%;height:360px}
+  .hide{display:none}
+  .note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;border-radius:0 10px 10px 0;font-size:13.5px;margin:16px 0}
+  .warn{border-left-color:var(--up);background:rgba(217,43,43,.07)}
+  .foot{font-size:11.5px;color:var(--muted);margin-top:22px;padding-top:18px;border-top:1px solid var(--border);line-height:1.8}
+  .legend-hint{font-size:11.5px;color:var(--muted);margin-top:2px}
+  a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="kicker">Index Rebalancing Study · 2026</div>
+      <h1>红利低波双指数调仓效应与估值变化研究</h1>
+      <p class="sub">中证红利低波动（H30269） vs 标普中国A股大盘红利低波50（SPCLLHCP）——调仓前后估值切片与走势规律</p>
+      <div class="meta">
+        <span>数据截至 2026-11-19</span>
+        <span>中证样本 2016–2025 共10次</span>
+        <span>估值：PE(TTM) / PB(LF) / 股息率(TTM)</span>
+        <span>来源：中证指数估值库、标普官网、Wind 引用</span>
+      </div>
+    </div>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">◐ 切换暗黑模式</button>
+  </header>
+
+  <!-- TLDR -->
+  <section class="tldr">
+    <h2><span class="no">✓</span>核心结论（先看这里）</h2>
+    <div class="grid">
+      <div class="kpi"><div class="big down">≈ 0</div><div class="lbl">调仓对指数点位几乎无影响——换股通过除数调整对冲，点位不跳空</div></div>
+      <div class="kpi"><div class="big down">6 / 7</div><div class="lbl">7次精确可比调仓中，6次调仓后股息率抬升——"高抛低吸"确实生效</div></div>
+      <div class="kpi"><div class="big acc">27.7% → ≈0</div><div class="lbl">调仓的 PE 跳变幅度从2018年 −27.7% 收敛到近年的接近0</div></div>
+      <div class="kpi"><div class="big up">11月83% / 12月42%</div><div class="lbl">中证年度调仓恰落在季节性最弱月份——调仓窗口本身不是利好</div></div>
+    </div>
+    <ul class="pts">
+      <li><b>走势上：</b>调仓前后的净值扰动只在生效日前后1–2个交易日，且属暂时现象；真正的方向由"结构重估 + 季节性"共同决定，而非换股本动作。</li>
+      <li><b>估值上：</b>两只指数都靠"股息率加权 + 定期调样"实现纪律性高抛低吸：调出因上涨而股息率摊薄的股票，纳入跌出性价比的标的，使组合股息率中枢稳定。</li>
+      <li><b>但当前要清醒：</b>中证红利低波 PE 已从2022年底 4.86 倍升到 9.39 倍（5年分位 99.8%），股息率从 7.00% 降到 3.94%（5年分位 1.4%）——"调仓降估值"的效力已被全市场估值抬升覆盖。</li>
+      <li><b>数据可得性差异：</b>中证指数估值库可给出完整的调仓前后日频切片；标普50的公开估值仅为零散时点快照，完整序列需 Wind/Choice 终端（代码 SPCLLHCP.SPI），本报告已如实标注。</li>
+    </ul>
+  </section>
+
+  <!-- Part 1 -->
+  <section>
+    <h2><span class="no">1</span>调仓后，走势通常会发生什么变化？</h2>
+    <p class="lead">把"调仓动作本身"和"调仓带来的结构变化"分开看，是理解这个问题的关键。</p>
+
+    <div class="duo">
+      <div class="mini">
+        <h4>① 点位层面：几乎不跳变</h4>
+        <p>指数换股通过调整除数完成，成分切换当天点位不会因"换了股票"而跳空。真正的小波动来自三处：ETF 跟踪盘为换股产生的佣金/冲击成本、生效日前后1–2日的权重切换扰动、以及名单提前公布后的"预告效应"（调入股在公告至生效期间已被抢先买入，到生效日价格已部分反映）。</p>
+      </div>
+      <div class="mini">
+        <h4>② 结构层面：一次"机械高抛低吸"</h4>
+        <p>双因子规则天然与市值加权相反：股价大涨→股息率下降、波动率上升→被调出（高位卖）；股价阴跌、分红稳定→股息率抬升、波动收敛→被纳入（低位买）。因此绝大多数调仓后，<b>组合整体股息率小幅抬升、整体波动率进一步下降</b>，行业结构更偏防御。</p>
+      </div>
+    </div>
+
+    <div class="flow">
+      <span class="box">股价上涨</span><span class="arw">→</span>
+      <span class="box">股息率被摊薄 / 波动率上升</span><span class="arw">→</span>
+      <span class="box">调出</span><span class="arw">→</span>
+      <span class="box">低位高息股调入</span><span class="arw">→</span>
+      <span class="box" style="border-color:var(--down)">股息率↑ 波动率↓</span>
+    </div>
+
+    <h3>③ 日历效应：调仓窗口恰好落在"最弱的12月"</h3>
+    <p style="font-size:13.5px;color:var(--muted);margin:0">多家机构对2015年以来红利指数的月度超额统计高度一致：<b>11月最强（平均 +2.90%、胜率 83.3%）、2月最稳（+2.06%）、10月最弱（−2.09%）、12月下跌频率最高（58.3%、胜率仅 41.7%）</b>。而中证年度调仓在12月第二个周五后生效——这意味着"11月强势 → 12月调仓"之间存在明显的方向切换，<b>调仓窗口不构成利好，反而是全年季节性最弱的一段</b>。不过这些是历史统计，存在过拟合风险（2026年就出现10月涨、11月"开门不利"的背离），更稳健的观察是红利指数"连续涨跌3个月很少见"的均值回归特性。</p>
+
+    <div class="callout">
+      <b>两个指数错峰，别混淆：</b>中证红利低波（H30269）每年12月调一次；标普红利低波50（SPCLLHCP）每年1月、7月末各调一次，恰好避开中证集中调仓的尾盘冲击。所以两者在12月不会同时调仓，年末需关注的调仓冲击主要落在跟踪 H30269 的产品上。
+    </div>
+  </section>
+
+  <!-- Part 2 -->
+  <section>
+    <h2><span class="no">2</span>中证红利低波：近10次调仓前后估值对照</h2>
+    <p class="lead">调仓前取生效日前一交易日、调仓后取生效日；PE=TTM、PB=LF、股息率=近12个月。数据源：中证指数估值库（H30269.CS）。</p>
+
+    <div class="chart-head">
+      <div class="chart-title">10次调仓前后 PE（倍）</div>
+      <button class="toggle" id="tg1" onclick="toggleView('v1','tg1')">切到表格</button>
+    </div>
+    <div id="v1"><div class="chart" id="c1"></div></div>
+    <div id="t1" class="hide tbl-wrap"></div>
+    <div class="legend-hint">红=调仓后高于调仓前，绿=调仓后低于调仓前；2022/2024/2025 为受限或近似样本（见表下注）。</div>
+
+    <div class="chart-head">
+      <div class="chart-title">10次调仓前后 股息率（%）</div>
+      <button class="toggle" id="tg2" onclick="toggleView('v2','tg2')">切到表格</button>
+    </div>
+    <div id="v2"><div class="chart" id="c2"></div></div>
+    <div id="t2" class="hide tbl-wrap"></div>
+
+    <div class="chart-head">
+      <div class="chart-title">调仓引起的 PE 跳变幅度：逐年收敛（7次精确样本）</div>
+      <button class="toggle" id="tg3" onclick="toggleView('v3','tg3')">切到表格</button>
+    </div>
+    <div id="v3"><div class="chart" id="c3"></div></div>
+    <div id="t3" class="hide tbl-wrap"></div>
+    <div class="legend-hint">仅取有精确前后两日切片的年份；2022/2024/2025 因数据受限不参与。</div>
+
+    <h3>完整数据表（10次）</h3>
+    <div class="tbl-wrap">
+      <table id="fullTable">
+        <thead><tr>
+          <th>调仓年份</th><th>生效日</th><th>PE前</th><th>PE后</th><th>PE变化</th>
+          <th>PB前</th><th>PB后</th><th>股息率前</th><th>股息率后</th><th>股息率变化</th><th>数据质量</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="note">
+      <span class="tag lim">受限</span> 2022年生效日落在年末，未取到紧邻两日切片，表中列 2022-12-30 年末值（PE 4.86 / PB 0.58 / 股息率 7.00%，为有数据以来最低估值区）。<br>
+      <span class="tag ap">近似</span> 2024、2025 仅取到调仓后及年末/邻近日数据，"前值"为目录引用近似值（2024前约7.5/PB约0.80/股息约5.1%；2025前约8.4/PB约0.88/股息约4.2%），不宜做精确跳变结论。<br>
+      2016年总市值口径由 9,899 亿降至 5,746 亿，样本结构大改，PE +3.1倍属一次性口径跃升；2017年调仓剔除1只亏损股，亦推高PE。口径细节以中证官网存档为准。
+    </p>
+
+    <div class="callout warn">
+      <b>三个可验证的规律：</b>
+      ① <b>方向是"降PE/PB、升股息率"</b>——7次精确样本中6次股息率上升、5次PE下降；<br>
+      ② <b>跳变幅度持续收敛</b>——2018年 PE 一次性降 27.7%，2020年降 8.2%，2021年后降到 2% 以内，2023年几乎为0（成分池多年筛选后趋于同质）；<br>
+      ③ <b>但绝对估值已在历史顶部</b>——最新（2026-11-18）PE 9.39倍、PB 0.93倍、股息率 3.94%，PE/PB 五年分位 99.8%，股息率五年分位 1.4%。调仓仍在低买高卖，但市场整体重估的力量远大于调仓的估值修正。
+    </div>
+  </section>
+
+  <!-- Part 3 -->
+  <section>
+    <h2><span class="no">3</span>标普红利低波50：估值快照与时间线</h2>
+    <p class="lead">该指数由标普道琼斯编制，1月/7月末各调一次。公开渠道只有零散时点快照，没有完整的"调仓前后日频序列"——这是数据可得性的客观限制，下面如实呈现可得数据。</p>
+
+    <div class="chart-head">
+      <div class="chart-title">可得时点的 PE（左轴）与股息率（右轴）</div>
+      <button class="toggle" id="tg4" onclick="toggleView('v4','tg4')">切到表格</button>
+    </div>
+    <div id="v4"><div class="chart" id="c4"></div></div>
+    <div id="t4" class="hide tbl-wrap"></div>
+    <div class="legend-hint">每个点为媒体/基金材料引用的 Wind 快照，取数日与口径不完全统一，只作趋势参考，非连续日频序列。</div>
+
+    <div class="tbl-wrap" style="margin-top:16px">
+      <table>
+        <thead><tr><th>时点</th><th>PE(TTM)</th><th>PB</th><th>股息率(TTM)</th><th>相对调仓的含义</th></tr></thead>
+        <tbody>
+          <tr><td>2024-12-31</td><td>8.51</td><td>0.87</td><td>—</td><td style="text-align:left">1月调仓前参考日附近</td></tr>
+          <tr><td>2025-03-21</td><td>7.97</td><td>0.82</td><td>6.13%</td><td style="text-align:left">近十年94.6%分位，性价比历史高位</td></tr>
+          <tr><td>2025-06-30</td><td>8.83</td><td>0.85</td><td>5.19%</td><td style="text-align:left">6月参考日/7月调仓前</td></tr>
+          <tr><td>2025-12-24</td><td>8.45</td><td>0.87</td><td>5.20%</td><td style="text-align:left">12月参考日/次年1月调仓前</td></tr>
+          <tr><td>2026-07-07</td><td>8.71</td><td>—</td><td>4.98%</td><td style="text-align:left">7月调仓后一周</td></tr>
+          <tr><td>2026-11-17</td><td>≈10.1</td><td>—</td><td>≈4.4%</td><td style="text-align:left">最新，PE 显著高于历史中位数(≈6.9)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>从快照能读出的三条结论</h3>
+    <ul class="pts">
+      <li><b>股息率呈"脉冲＋趋势下移"：</b>2022–2024年7月从 4.33%→5.10% 走高，2025年3月冲到 6.13%（近十年94.6%分位）见顶，2026年回落到 4.3%–4.4%——本质是股价上涨摊薄了股息率。</li>
+      <li><b>PE 中枢明显上移：</b>2024年底 8.51 → 2026年11月 ≈10.1，而历史中位数约 6.9 倍。这一轮红利行情的超额收益主要来自<b>估值扩张，而非盈利改善</b>。</li>
+      <li><b>PB 比 PE 温和得多：</b>长期在 0.8–0.9 窄幅震荡，说明净资产增长跟得上股价；PE 上行更多来自盈利端分母压力（银行息差、周期股盈利下滑）。<b>PE 与 PB 的背离是该指数最值得跟踪的信号。</b></li>
+    </ul>
+
+    <div class="callout">
+      <b>调仓名单就是"估值变化"的直接证据：</b>2026年1月调仓大举纳入五粮液、长江电力、青岛啤酒、东阿阿胶等（消费/公用事业跌出性价比后股息率抬升），调出陕西煤业、洋河等；7月调出中国神华、陕西能源等煤炭股，调入招商银行、沪农商行。持续减配强周期、向现金流稳定的银行/消费/医药倾斜，这正是 PB 始终上不去、PE 被消费股拉高的结构性原因。
+    </div>
+    <p class="note">口径提示：不同来源对同一时点的 PE 存在差异（如是否剔除负值股、整体法/中位数法、滚动/已宣告股息率），跨来源比较请留出 10% 以上误差带。完整调仓前后序列需用 Wind/Choice 日频字段（SPCLLHCP.SPI 的 pe_ttm / pb_lf / dividendyield2）按每年1月、7月最后交易日切片。</p>
+  </section>
+
+  <!-- Part 4 -->
+  <section>
+    <h2><span class="no">4</span>实操启示与口径说明</h2>
+    <div class="duo">
+      <div class="mini">
+        <h4>对持有人</h4>
+        <p>① 不追"调入股"——名单早已公布，股价多已提前反应；② 不急卖"调出股"——调出只是不再符合指数定位，不代表基本面恶化；③ ETF 持有者无需因调仓频繁操作，1–2日扰动是暂时性的。若想建仓，在生效日前后分批更稳妥。</p>
+      </div>
+      <div class="mini">
+        <h4>对择时判断</h4>
+        <p>把"调仓"与"分红除权"分开：前者改变结构进而影响估值/股息率台阶，后者是5–7月的"抢权—抛压"（且随一年多次分红普及正在弱化）。比单月胜率更可靠的是均值回归——连续涨跌3个月的情况很少见。</p>
+      </div>
+    </div>
+
+    <div class="callout warn" style="margin-top:18px">
+      <b>一句话总结：</b>调仓的长期价值在于纪律性再平衡，而非单次的短期冲击。据华创证券测算，红利资产过去5年约10%的年化收益中，股东回报贡献约6%、价格端仅约4%。当前两个指数 PE 均处历史高位、股息率处低位，<b>"调仓降估值"的效力已被整体估值抬升覆盖</b>——这意味着未来收益更依赖分红与盈利，而非估值继续扩张。
+    </div>
+
+    <div class="foot">
+      <b>数据来源与时效：</b>① 中证红利低波估值：中证指数官方估值序列 H30269.CS（2016–2025 调仓日切片及 2026-11-18 最新），编制方案来自中证指数公司官网；② 标普红利低波50：标普道琼斯官网方法论与投教材料、南方基金/华泰柏瑞/新浪财经/腾讯证券等引用的 Wind 快照（2024-12 至 2026-11），分位口径来自基金投教材料；③ 日历效应：2015年以来中证红利全收益月度超额统计（雪球/券商研报引用）；④ 股东回报拆解：华创证券测算。<br>
+      <b>限制：</b>标普50 无公开完整调仓前后估值序列；2022/2024/2025 中证样本为受限/近似数据；不同来源口径存在差异，已在正文标注。指数历史表现不预示未来。<br><br>
+      <b>免责声明</b>：以上内容基于公开数据和量化分析，仅供参考，不构成投资建议。市场有风险，投资需谨慎。任何投资决策应结合个人风险承受能力、资金状况和投资目标独立判断，必要时咨询持牌专业机构。过往表现不预示未来收益。
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ---------- 数据 ---------- */
+const csi = [
+  {y:'2016', eff:'12-12', peB:7.31,  peA:10.43, pbB:1.06, pbA:1.47, dyB:4.19, dyA:3.25, q:'ok'},
+  {y:'2017', eff:'12-11', peB:12.12, peA:12.92, pbB:1.64, pbA:1.76, dyB:2.67, dyA:2.79, q:'ok'},
+  {y:'2018', eff:'12-17', peB:9.53,  peA:6.89,  pbB:1.40, pbA:0.95, dyB:3.96, dyA:4.44, q:'ok'},
+  {y:'2019', eff:'12-16', peB:7.14,  peA:6.98,  pbB:0.93, pbA:0.89, dyB:4.14, dyA:4.55, q:'ok'},
+  {y:'2020', eff:'12-14', peB:6.90,  peA:6.33,  pbB:0.77, pbA:0.73, dyB:4.90, dyA:5.39, q:'ok'},
+  {y:'2021', eff:'12-13', peB:5.23,  peA:5.12,  pbB:0.63, pbA:0.63, dyB:5.75, dyA:5.73, q:'ok'},
+  {y:'2022', eff:'年末值', peB:null, peA:4.86,  pbB:null, pbA:0.58, dyB:null, dyA:7.00, q:'lim'},
+  {y:'2023', eff:'12-14', peB:5.46,  peA:5.45,  pbB:0.60, pbA:0.60, dyB:6.48, dyA:6.50, q:'ok'},
+  {y:'2024', eff:'≈12-16', peB:7.55, peA:7.40,  pbB:0.80, pbA:0.78, dyB:5.10, dyA:5.19, q:'ap'},
+  {y:'2025', eff:'12-15', peB:8.40,  peA:8.46,  pbB:0.88, pbA:0.88, dyB:4.20, dyA:4.20, q:'ap'}
+];
+const sp = {
+  date:['2024-12','2025-03','2025-06','2025-09','2025-12','2026-03','2026-07','2026-11'],
+  pe:[8.51,7.97,8.83,null,8.45,10.5,8.71,10.1],
+  dy:[null,6.13,5.19,4.50,5.20,4.80,4.98,4.4]
+};
+
+let dark = false;
+function theme(){
+  return dark ? {
+    bg:'#1a1e27', text:'#e8ebf2', axis:'#7c869c', split:'#2b313d',
+    up:'#ff5f5f', down:'#38c893', accent:'#7aa7ff'
+  } : {
+    bg:'#ffffff', text:'#1f2430', axis:'#8b93a7', split:'#eef0f5',
+    up:'#d92b2b', down:'#12996a', accent:'#1d4ed8'
+  };
+}
+function toggleTheme(){
+  dark = !dark;
+  document.documentElement.setAttribute('data-theme', dark?'dark':'light');
+  document.getElementById('themeBtn').textContent = dark?'☀ 切换浅色模式':'◐ 切换暗黑模式';
+  render();
+}
+function toggleView(vid, btn){
+  const chartBox=document.getElementById(vid), tableBox=document.getElementById('t'+vid.slice(1)), btnEl=document.getElementById(btn);
+  if(chartBox.classList.contains('hide')){ chartBox.classList.remove('hide'); tableBox.classList.add('hide'); btnEl.textContent='切到表格'; btnEl.classList.remove('on'); }
+  else { chartBox.classList.add('hide'); tableBox.classList.remove('hide'); btnEl.textContent='切到图表'; btnEl.classList.add('on'); }
+}
+function fmt(v){ return v===null?'—':v.toFixed(2); }
+function chart(id){
+  const el=document.getElementById(id);
+  const old=echarts.getInstanceByDom(el);
+  if(old) old.dispose();
+  return echarts.init(el,null,{renderer:'canvas'});
+}
+function pct(b,a){ return (b===null||a===null)?'—':(((a-b)/b)*100).toFixed(1)+'%'; }
+function dcolor(b,a){ return (b!==null&&a!==null)?(a>=b?theme().up:theme().down):theme().axis; }
+
+function render(){
+  const T=theme();
+  const years=csi.map(d=>d.y);
+
+  // 表1 PE前后
+  document.getElementById('t1').innerHTML =
+    '<table><thead><tr><th>年份</th><th>PE前</th><th>PE后</th><th>变化</th><th>质量</th></tr></thead><tbody>'+
+    csi.map(d=>'<tr><td>'+d.y+'</td><td>'+fmt(d.peB)+'</td><td>'+fmt(d.peA)+'</td><td>'+pct(d.peB,d.peA)+'</td><td>'+d.q+'</td></tr>').join('')+
+    '</tbody></table>';
+  // 表2 股息率前后
+  document.getElementById('t2').innerHTML =
+    '<table><thead><tr><th>年份</th><th>股息率前</th><th>股息率后</th><th>变化(pct)</th><th>质量</th></tr></thead><tbody>'+
+    csi.map(d=>'<tr><td>'+d.y+'</td><td>'+fmt(d.dyB)+'%</td><td>'+fmt(d.dyA)+'%</td><td>'+((d.dyB===null)?'—':(d.dyA-d.dyB).toFixed(2))+'</td><td>'+d.q+'</td></tr>').join('')+
+    '</tbody></table>';
+
+  // 图1 PE前后
+  chart('c1').setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis',valueFormatter:v=>v===null?'—':v},
+    legend:{data:['调仓前 PE','调仓后 PE'],textStyle:{color:T.text},top:0},
+    grid:{left:44,right:16,top:38,bottom:30},
+    xAxis:{type:'category',data:years,axisLabel:{color:T.axis},axisLine:{lineStyle:{color:T.axis}}},
+    yAxis:{type:'value',name:'倍',nameTextStyle:{color:T.axis},axisLabel:{color:T.axis},splitLine:{lineStyle:{color:T.split}}},
+    series:[
+      {name:'调仓前 PE',type:'bar',data:csi.map(d=>d.peB),itemStyle:{color:T.axis,borderRadius:[3,3,0,0]}},
+      {name:'调仓后 PE',type:'bar',data:csi.map((d,i)=>({value:d.peA,itemStyle:{color:dcolor(d.peB,d.peA),borderRadius:[3,3,0,0]}}))}
+    ]
+  },true);
+
+  // 图2 股息率前后
+  document.getElementById('t3').innerHTML =
+    '<table><thead><tr><th>年份</th><th>PE变化</th></tr></thead><tbody>'+
+    csi.filter(d=>d.q==='ok').map(d=>'<tr><td>'+d.y+'</td><td>'+pct(d.peB,d.peA)+'</td></tr>').join('')+
+    '</tbody></table>';
+  chart('c2').setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis',valueFormatter:v=>v===null?'—':v+'%'},
+    legend:{data:['调仓前 股息率','调仓后 股息率'],textStyle:{color:T.text},top:0},
+    grid:{left:48,right:16,top:38,bottom:30},
+    xAxis:{type:'category',data:years,axisLabel:{color:T.axis},axisLine:{lineStyle:{color:T.axis}}},
+    yAxis:{type:'value',name:'%',nameTextStyle:{color:T.axis},axisLabel:{color:T.axis},splitLine:{lineStyle:{color:T.split}}},
+    series:[
+      {name:'调仓前 股息率',type:'bar',data:csi.map(d=>d.dyB),itemStyle:{color:T.axis,borderRadius:[3,3,0,0]}},
+      {name:'调仓后 股息率',type:'bar',data:csi.map(d=>({value:d.dyA,itemStyle:{color:dcolor(d.dyB,d.dyA),borderRadius:[3,3,0,0]}}))}
+    ]
+  },true);
+
+  // 图3 PE跳变幅度收敛
+  const jump=csi.filter(d=>d.q==='ok').map(d=>({y:d.y,v:+(((d.peA-d.peB)/d.peB)*100).toFixed(1)}));
+  chart('c3').setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis',valueFormatter:v=>v+'%'},
+    grid:{left:48,right:16,top:30,bottom:30},
+    xAxis:{type:'category',data:jump.map(d=>d.y),axisLabel:{color:T.axis},axisLine:{lineStyle:{color:T.axis}}},
+    yAxis:{type:'value',name:'PE变化 %',nameTextStyle:{color:T.axis},axisLabel:{color:T.axis},splitLine:{lineStyle:{color:T.split}}},
+    series:[{
+      name:'PE跳变',type:'bar',
+      data:jump.map(d=>({value:d.v,itemStyle:{color:d.v>=0?T.up:T.down,borderRadius:d.v>=0?[3,3,0,0]:[0,0,3,3]}})),
+      label:{show:true,position:'top',color:T.text,formatter:p=>p.value+'%',fontSize:11}
+    }]
+  },true);
+
+  // 表4 + 图4 标普
+  document.getElementById('t4').innerHTML =
+    '<table><thead><tr><th>时点</th><th>PE</th><th>股息率</th></tr></thead><tbody>'+
+    sp.date.map((d,i)=>'<tr><td>'+d+'</td><td>'+fmt(sp.pe[i])+'</td><td>'+(sp.dy[i]===null?'—':sp.dy[i]+'%')+'</td></tr>').join('')+
+    '</tbody></table>';
+  chart('c4').setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis'},
+    legend:{data:['PE(TTM)','股息率(TTM)'],textStyle:{color:T.text},top:0},
+    grid:{left:46,right:50,top:38,bottom:34},
+    xAxis:{type:'category',data:sp.date,axisLabel:{color:T.axis,rotate:20},axisLine:{lineStyle:{color:T.axis}}},
+    yAxis:[
+      {type:'value',name:'PE',nameTextStyle:{color:T.axis},axisLabel:{color:T.axis},splitLine:{lineStyle:{color:T.split}}},
+      {type:'value',name:'股息率 %',nameTextStyle:{color:T.axis},axisLabel:{color:T.axis},splitLine:{show:false}}
+    ],
+    series:[
+      {name:'PE(TTM)',type:'line',data:sp.pe,connectNulls:true,smooth:true,symbolSize:7,lineStyle:{color:T.accent,width:2.5},itemStyle:{color:T.accent}},
+      {name:'股息率(TTM)',type:'line',yAxisIndex:1,data:sp.dy,connectNulls:true,smooth:true,symbolSize:7,lineStyle:{color:T.up,width:2.5},itemStyle:{color:T.up}}
+    ]
+  },true);
+
+  // 完整表
+  document.querySelector('#fullTable tbody').innerHTML = csi.map(d=>{
+    const tag = d.q==='ok'?'<span class="tag ok">精确</span>':(d.q==='ap'?'<span class="tag ap">近似</span>':'<span class="tag lim">受限</span>');
+    const chg = pct(d.peB,d.peA), dychg = (d.dyB===null)?'—':(d.dyA-d.dyB).toFixed(2);
+    const cls = (d.peB!==null)?(d.peA>=d.peB?'up':'down'):'';
+    return '<tr><td>'+d.y+'</td><td>'+d.eff+'</td><td>'+fmt(d.peB)+'</td><td>'+fmt(d.peA)+'</td><td class="'+cls+'">'+chg+'</td>'+
+      '<td>'+fmt(d.pbB)+'</td><td>'+fmt(d.pbA)+'</td><td>'+fmt(d.dyB)+(d.dyB===null?'':'%')+'</td><td>'+fmt(d.dyA)+'%</td><td class="'+(d.dyB!==null&&d.dyA>=d.dyB?'up':'down')+'">'+dychg+'</td><td>'+tag+'</td></tr>';
+  }).join('');
+}
+
+window.addEventListener('resize',()=>{ ['c1','c2','c3','c4'].forEach(id=>{const el=document.getElementById(id);if(el){const ins=echarts.getInstanceByDom(el);if(ins)ins.resize();}}); });
+render();
+</script>
+</body>
+</html>

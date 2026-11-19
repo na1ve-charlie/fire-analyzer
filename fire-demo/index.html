@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FIRE 模型结构优化 · Demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="demo-header">
+      <div>
+        <p class="kicker">FIRE PLANNER · STRUCTURE DEMO v0.1</p>
+        <h1>模型结构优化 Demo</h1>
+        <p class="lead">三情景 · 三红利模式 · 账户资金闭环 · 资金守恒校验 · 压力路径。仅用于验证方案效果，不影响正式版页面。</p>
+      </div>
+      <button id="themeToggle" class="ghost-btn" type="button">切换主题</button>
+    </header>
+
+    <div class="notice">
+      <strong>这版 demo 解决什么</strong>
+      <p>把"实际本金"和"反推目标"分开；每个账户独立记账；每笔定投都有来源（副业／主账户／外部）；逐年做资金守恒校验；对比三档收益情景与四种压力路径。</p>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2>1. 情景与假设</h2><span class="badge" id="scenarioBadge">基准情景</span></div>
+      <div class="control-grid">
+        <div class="control-block">
+          <label>收益情景</label>
+          <div class="segmented" id="scenarioSwitch">
+            <button data-scenario="conservative" type="button">保守 3.5%</button>
+            <button data-scenario="base" class="active" type="button">基准 5.0%</button>
+            <button data-scenario="optimistic" type="button">乐观 6.5%</button>
+          </div>
+        </div>
+        <div class="control-block">
+          <label>红利领取模式</label>
+          <div class="segmented" id="modeSwitch">
+            <button data-mode="dividend" type="button">A 纯股息</button>
+            <button data-mode="totalReturn" class="active" type="button">B 总回报提款</button>
+            <button data-mode="annuity" type="button">C 固定年金</button>
+          </div>
+        </div>
+        <div class="control-block">
+          <label>定投资金来源</label>
+          <div class="segmented" id="sourceSwitch">
+            <button data-source="side" class="active" type="button">副业（不足补主账户）</button>
+            <button data-source="main" type="button">主账户转出</button>
+            <button data-source="external" type="button">独立外部收入</button>
+          </div>
+        </div>
+      </div>
+      <div class="param-table" id="paramTable"></div>
+      <div class="check-row">
+        <label><input type="checkbox" id="categoryInflation" checked> 启用分类通胀（医疗 4%、物业 3%、其余 2.5%）</label>
+        <label><input type="checkbox" id="stressInflation"> 对分类通胀再叠加压力冲击</label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>2. 关键结论</h2><span class="badge" id="verdictBadge">—</span></div>
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="conservation" id="conservation"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>3. 资产曲线 · 实际本金 vs 反推目标</h2></div>
+      <div class="chart-wrap">
+        <svg id="mainChart" role="img" aria-label="资产曲线"></svg>
+      </div>
+      <div class="legend">
+        <span><i class="ln total"></i>总资产（三账户合计）</span>
+        <span><i class="ln main"></i>主账户</span>
+        <span><i class="ln dca"></i>定投账户</span>
+        <span><i class="ln reserve"></i>储备账户</span>
+      </div>
+      <p class="foot">当前曲线从<strong>你填写的实际本金</strong>起算；正式版目前默认从反推目标起算，本 demo 把两者分开呈现。可用下方"起算口径"切换到反推目标做对照。</p>
+      <div class="segmented small" id="curveSwitch">
+        <button data-curve="actual" class="active" type="button">实际本金起算</button>
+        <button data-curve="target" type="button">反推目标起算</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>4. 三情景对比</h2></div>
+      <div class="table-wrap"><table id="scenarioTable"></table></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>5. 压力路径测试</h2></div>
+      <div class="table-wrap"><table id="stressTable"></table></div>
+      <p class="foot">压力路径是人为设定的测试情景，不是市场预测。看四个指标：是否耗尽、最早不足年、资产最低点、第 50 年剩余。</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>6. 逐年资金流（前 5 年 + 领取起点附近 + 末年）</h2></div>
+      <div class="table-wrap"><table id="flowTable"></table></div>
+      <p class="foot" id="accountNote"></p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>7. 蒙特卡洛模拟</h2><span class="badge" id="mcBadge">—</span></div>
+      <p class="foot" style="margin:0 0 14px">对主账户与定投账户各生成随机收益路径（对数正态，μ 为长期年化几何口径），逐条复用同一套现金流与守恒逻辑。固定随机种子保证结果可复现。</p>
+      <div class="control-grid">
+        <div class="control-block">
+          <label>资产配置（决定波动率 σ）</label>
+          <div class="segmented" id="mcProfileSwitch">
+            <button data-profile="equity100" type="button">100% 股票</button>
+            <button data-profile="equity70" type="button">股70/债30</button>
+            <button data-profile="balanced" class="active" type="button">股债 50/50</button>
+            <button data-profile="dividend" type="button">红利为主</button>
+          </div>
+        </div>
+        <div class="control-block">
+          <label>模拟次数</label>
+          <div class="segmented" id="mcRunsSwitch">
+            <button data-runs="2000" type="button">2,000</button>
+            <button data-runs="5000" class="active" type="button">5,000</button>
+            <button data-runs="10000" type="button">10,000</button>
+          </div>
+        </div>
+        <div class="control-block">
+          <label>行为弹性（回撤超 20% 当年支出降 10%）</label>
+          <div class="segmented" id="mcFlexSwitch">
+            <button data-flex="false" class="active" type="button">关闭</button>
+            <button data-flex="true" type="button">开启</button>
+          </div>
+        </div>
+      </div>
+      <div class="param-table" id="mcParams" style="grid-template-columns: repeat(4, 1fr)"></div>
+      <div class="kpi-grid" id="mcKpis"></div>
+      <div class="mc-columns">
+        <div>
+          <div class="fund-scenario-title" style="margin:14px 0 8px">期末总资产分布</div>
+          <div class="table-wrap"><table id="mcDistTable"></table></div>
+        </div>
+        <div>
+          <div class="fund-scenario-title" style="margin:14px 0 8px">失败路径耗尽年份分布</div>
+          <div class="chart-wrap"><svg id="mcHist" role="img" aria-label="耗尽年份分布"></svg></div>
+        </div>
+      </div>
+      <div class="conservation" id="mcConservation"></div>
+      <p class="foot">参数为长期资本市场假设示意值，非市场预测；第一版使用对数正态分布，历史序列 bootstrap（更贴近肥尾）留待接入真实数据后启用。</p>
+    </section>
+
+    <footer class="demo-footer">FIRE Planner 结构优化 Demo · 所有收益率为扣除费用后的名义净总回报口径 · 不构成投资建议</footer>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

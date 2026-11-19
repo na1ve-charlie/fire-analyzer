@@ -135,9 +135,9 @@
           <div class="panel-heading"><div><span class="step-number">03</span><h2>预期初始本金</h2></div></div>
           <label class="principal-input-wrap" for="principalInput">
             <span>¥</span>
-            <input id="principalInput" type="number" min="0" max="100000000" step="1000" value="1400000">
+            <input id="principalInput" type="number" min="0" max="100000000" step="1000" value="1050000">
           </label>
-          <input class="range principal-range" id="principalRange" type="range" min="0" max="5000000" step="1000" value="1400000">
+          <input class="range principal-range" id="principalRange" type="range" min="0" max="5000000" step="1000" value="1050000">
           <div class="range-scale"><span>0</span><span>500 万</span></div>
           <div class="quick-amounts">
             <button type="button" data-amount="1000000">100 万</button>
@@ -145,7 +145,15 @@
             <button type="button" data-amount="2000000">200 万</button>
             <button type="button" data-amount="reverse">反推值</button>
           </div>
-          <p class="panel-footnote">曲线将输入金额视为期初可投资本金。</p>
+          <div class="basis-switch-row">
+            <span>全盘测算口径</span>
+            <div class="curve-source-switch" role="group" aria-label="全盘测算口径">
+              <button type="button" data-curve-source="target" class="active">反推目标</button>
+              <button type="button" data-curve-source="principal">我的本金</button>
+            </div>
+          </div>
+          <p class="panel-footnote" id="activePrincipalNote">当前全盘起算本金：—</p>
+          <p class="panel-footnote">手动修改本金会自动切到「我的本金」；切回「反推目标」后，反推值驱动全站运算，手动金额仅作对照。</p>
         </section>
 
         <section class="panel control-panel medical-panel">
@@ -182,12 +190,12 @@
             <div><span>累计提取支出</span><strong id="totalWithdrawals">—</strong></div>
           </div>
           <div class="curve-source-row">
-            <span>曲线起点</span>
-            <div class="curve-source-switch" role="group" aria-label="曲线起点">
+            <span>全盘测算口径</span>
+            <div class="curve-source-switch" role="group" aria-label="全盘测算口径">
               <button type="button" data-curve-source="target" class="active">反推目标</button>
               <button type="button" data-curve-source="principal">我的本金</button>
             </div>
-            <small id="curveSourceNote">按当前模式的反推目标起算</small>
+            <small id="curveSourceNote">全盘按当前模式的反推目标起算</small>
           </div>
           <div class="chart-wrap" id="chartWrap">
             <svg id="cashflowChart" class="cashflow-chart" role="img" aria-label="现金流预测曲线"></svg>
@@ -351,7 +359,12 @@
           <p class="fund-lead" id="mcLead">在当前收益中枢上叠加年度波动，观察 50 年内有多少路径能够安全走完。</p>
           <div class="fund-toggle-row">
             <div class="fund-toggle-group" role="group" aria-label="资产配置波动率">
-              <button type="button" data-mc-profile="myPortfolio" class="active">我的组合</button>
+              <button type="button" data-mc-profile="portfolioA" class="active">组合一 · 进攻</button>
+              <button type="button" data-mc-profile="portfolioB57">组合二 · 5–7年基线</button>
+              <button type="button" data-mc-profile="portfolioB10y">组合二 · 10年指数</button>
+              <button type="button" data-mc-profile="portfolioB30y">组合二 · 30年指数</button>
+              <button type="button" data-mc-profile="portfolioB10etf">组合二 · 10年ETF</button>
+              <button type="button" data-mc-profile="portfolioB30etf">组合二 · 30年ETF</button>
               <button type="button" data-mc-profile="balanced">股债 50/50</button>
               <button type="button" data-mc-profile="equity70">股 70 / 债 30</button>
               <button type="button" data-mc-profile="equity100">100% 股票</button>
@@ -371,9 +384,9 @@
           </div>
           <div class="mc-params" id="mcParams"></div>
           <div class="mc-holdings" id="mcHoldings" hidden>
-            <div class="fund-scenario-title">我的持仓权重与测算假设</div>
+            <div class="fund-scenario-title">当前组合持仓权重</div>
             <div class="table-wrap"><table id="mcHoldingsTable"></table></div>
-            <p class="fund-start-note">收益与波动来自 2016-11-22～2026-11-18 近十年回测；红利低波-波段无独立策略净值，使用同一底层指数数据。回测不代表未来，非市场预测或投资建议。</p>
+            <p class="fund-start-note">组合一为 2007-01-04～2026-11-09 长样本回测；组合二三列指数版（5–7 年基线 / 10 年 / 30 年）同为 2011-01-04～2026-11-09 样本；组合二两列 ETF 版（10 年 / 30 年）受 ETF 上市日限制同为 2023-06-13～2026-11-09 短样本。指数版与 ETF 版样本不同，胜率不可直接横比；所有版本均以人民币计价、月末再平衡，ETF 使用单位净值并计入分红再投资；微盘序列全收益口径依据第三方页面标注，待 Wind 原始数据核验。回测不代表未来，非市场预测或投资建议。</p>
           </div>
           <div class="fund-results mc-kpis" id="mcKpis"></div>
           <div class="mc-columns">
@@ -386,8 +399,23 @@
               <div class="chart-wrap mc-hist-wrap"><svg id="mcHistogram" role="img" aria-label="耗尽年份分布"></svg></div>
             </div>
           </div>
+          <div class="mc-attribution" id="mcAttribution" hidden>
+            <div class="fund-scenario-title">失败归因 · 这些路径为什么没能走完</div>
+            <p class="mc-attr-lead" id="mcAttrLead"></p>
+            <div class="mc-attr-columns">
+              <div>
+                <div class="mc-attr-subtitle">主因分布</div>
+                <div class="mc-attr-bars" id="mcAttrPrimary"></div>
+              </div>
+              <div>
+                <div class="mc-attr-subtitle">补救杠杆 · 能救回多少失败路径</div>
+                <div class="mc-attr-bars" id="mcAttrRemedies"></div>
+              </div>
+            </div>
+            <p class="mc-attr-foot" id="mcAttrFoot"></p>
+          </div>
           <div class="mc-conservation" id="mcConservation"></div>
-          <p class="panel-footnote">收益路径按对数正态分布生成，年化中枢取当前「年化收益率」，波动率由资产配置预设决定；固定随机种子 20261119，结果可复现。该模拟只改变波动假设，不修改上方确定性测算与反推本金。参数为示意假设，非市场预测，不构成投资建议。</p>
+          <p class="panel-footnote">收益路径按对数正态分布生成，年化中枢取当前「年化收益率」，波动率由资产配置预设决定；固定随机种子 20261119，结果可复现。模拟起点跟随「全盘测算口径」，但不会修改反推值与保守目标这两个对照基准。失败归因基于反事实测试：把失败路径的收益顺序、波动、支出或本金逐项调至理想值后重新判定存续，只为定位原因，不代表可以做到的市场操作。参数为示意假设，非市场预测，不构成投资建议。</p>
         </section>
 
         <section class="panel lever-panel" id="levers">
@@ -458,11 +486,12 @@
           <div class="method-grid">
             <article><span>01</span><h3>支出随通胀增长</h3><p>第 n 年支出 = 当前年支出 × (1 + 通胀率)<sup>n−1</sup>，保留生活成本上升的直接影响。</p></article>
             <article><span>02</span><h3>组合按年复利</h3><p>每年先获得投资收益，再在年末提取当年支出，形成逐年的资产余额。</p></article>
-            <article><span>03</span><h3>反推最低本金</h3><p>将未来每笔支出折现到期初并求和，使测算期限最后一年的资产余额约等于 0。</p></article>
+            <article><span>03</span><h3>反推最低本金</h3><p>用与现金流完全相同的模拟引擎二分求解，使测算期末资产归零（金鹅永续为购买力不减）。</p></article>
+            <article><span>04</span><h3>全盘测算口径</h3><p>「反推目标」用反推值驱动曲线、储备、存续概率与杠杆；「我的本金」改用手动输入金额，反推值只作对照。</p></article>
           </div>
           <div class="method-note">
             <strong>请注意</strong>
-            <p>这是确定性测算，不是收益承诺。结果未计入税费、突发大额支出与收益波动；反推值代表所选年限内的理论最低本金，期限越短，结果通常越低。现金流曲线把输入本金全部视为可投资资产，若需独立保留医疗或现金储备，请相应调低用于曲线测算的本金。</p>
+            <p>这是确定性测算，不是收益承诺。结果未计入税费、突发大额支出与收益波动；反推值代表所选年限内的理论最低本金，期限越短，结果通常越低。起算本金全部视为可投资资产，若需独立保留医疗或现金储备，请相应调低用于曲线测算的本金。</p>
           </div>
         </section>
       </div>
@@ -473,6 +502,6 @@
     <div class="container"><div class="brand footer-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M18.2 2.8c.7 5.1-3.8 6.8-3.8 10.5 0 1.8 1.1 3.1 2.7 3.8-.2-3.1 2.8-4.7 3.6-7.5 3.3 2.8 5.4 6.1 5.4 10.1 0 5.8-4.4 9.5-10.2 9.5S5.7 25.5 5.7 19.8c0-5.9 4.2-10.9 12.5-17Z" fill="currentColor"/></svg></span><span><strong>燃点</strong><small>让选择，建立在清晰之上。</small></span></div><p>所有计算均在浏览器本地完成 · 仅供财务规划参考</p></div>
   </footer>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261119c"></script>
+  <script type="module" src="app.js?v=20261119i"></script>
 </body>
 </html>

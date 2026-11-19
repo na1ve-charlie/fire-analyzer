@@ -154,7 +154,7 @@ export function simulateCustomProjection(options = {}) {
 }
 
 // 与 reservePlan 完全同一口径：某投资本金对应的储备年利息 =（医疗储备 + 10% 安全垫）× 储备利率。
-function reserveInterestForPrincipal(principal, medicalReserve, cashReserve, reserveRate) {
+export function reserveInterestForPrincipal(principal, medicalReserve, cashReserve, reserveRate) {
   const safetyPad = 0.1 * (principal + medicalReserve + cashReserve);
   return (medicalReserve + safetyPad) * reserveRate;
 }
@@ -396,10 +396,15 @@ export function calculateFirePlan(rawInput = {}) {
   const conservativeBase = annual * 40 + medicalReserve + cashReserve;
   const conservative = conservativeBase * 1.1;
 
+  // 全盘测算口径：反推目标 / 我的本金。现金流曲线、储备计划、蒙特卡洛与杠杆分析
+  // 统一以 activePrincipal 为起点；反推值与保守目标是独立对照基准，不随口径改变。
+  const activePrincipal = input.curveSource === "target" && reverse !== null ? reverse : input.principal;
+  const activeFullTarget = (activePrincipal + medicalReserve + cashReserve) * 1.1;
+
   let reservePlan = null;
   let annualReserveInterest = 0;
   if (reverse !== null && reverseFull !== null) {
-    const reserveTarget = reverseFull - reverse;
+    const reserveTarget = activeFullTarget - activePrincipal;
     const reserveSafetyPad = reserveTarget - medicalReserve - cashReserve;
     const interestBase = medicalReserve + reserveSafetyPad;
     annualReserveInterest = interestBase * reserveRate;
@@ -425,7 +430,7 @@ export function calculateFirePlan(rawInput = {}) {
     };
   }
 
-  const chartStart = input.curveSource === "target" && reverse !== null ? reverse : input.principal;
+  const chartStart = activePrincipal;
   const projection = simulateProjection(
     chartStart, annual, annualReturn, inflation, input.years,
     annualReserveInterest, dividendPlan.dividendIncomeByYear,
@@ -459,6 +464,9 @@ export function calculateFirePlan(rawInput = {}) {
     conservative,
     projection,
     chartStart,
+    activePrincipal,
+    activeFullTarget,
+    activeReserveInterest: annualReserveInterest,
     realEndBalance,
     safetyDifference: reverseFull === null ? null : conservative - reverseFull,
     reservePlan,
@@ -473,6 +481,7 @@ export function calculateFirePlan(rawInput = {}) {
       formulas: {
         requiredCapital: "反推本金用与现金流曲线相同的模拟引擎二分求解：细水长流取全程不破产的最小本金（收敛点即净支出现值，期末恰好归零）；金鹅永续取测算窗内购买力不减的最小本金。储备利息与红利抵扣按模拟口径逐年计入。",
         reserveInterest: "FIRE 后利息 =（医疗储备 + 10% 安全垫）× 储备利率；积累阶段不计息。",
+        calculationBasis: "全盘测算口径：反推目标口径用反推本金起算，我的本金口径用手动输入的预期本金起算；现金流曲线、储备利息、蒙特卡洛与杠杆分析全部沿用该起点，反推值与保守目标始终作为独立对照。",
         reserveAccumulation: "住家储蓄按年通胀递增，副业收入保持不变；积累阶段不计息。",
         dcaDividend: "月末定投按月复利；启用后从定投年限对应的 FIRE 年份开始领取。仅股息不卖本金；股息+本金按定投收益率年金化，到测算期末归零。开启定投通胀调整后，第 y 年月投额 = 基准月投额 ×(1+通胀率)^y。",
         dividendPurchasingPower: "领取金额为领取起点当年名义金额；购买力折算 = 名义金额 ÷ (1 + 通胀率)^领取起点年，即换算回 FIRE 开始时的购买力。"

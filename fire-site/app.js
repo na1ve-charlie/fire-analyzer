@@ -1,10 +1,10 @@
 "use strict";
 
-import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261119d";
-import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261119d";
-import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261119d";
-import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261119d";
-import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js?v=20261119d";
+import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261119i";
+import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261119i";
+import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261119i";
+import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261119i";
+import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION, MC_PROFILE_GROUPS } from "./js/core/monte-carlo.js?v=20261119i";
 
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
@@ -22,7 +22,7 @@ const DEFAULT_STATE = {
   returnRate: 5.5,
   inflationRate: 2,
   years: 50,
-  principal: 1400000,
+  principal: 1050000,
   sideIncomeMonthly: 1200,
   reserveReturnRate: 3,
   medicalReserve: 150000,
@@ -33,7 +33,7 @@ const DEFAULT_STATE = {
   dividendYield: 4,
   dividendEnabled: false,
   dividendMode: "dividendOnly",
-  mcProfile: "myPortfolio",
+  mcProfile: "portfolioA",
   mcRuns: 5000,
   mcFlexibility: false,
   mcTargetRate: 0.9
@@ -340,9 +340,14 @@ function updateAll() {
   setText("reverseFullTarget", formatOptionalMoney(result.reverseFull));
   setText("conservativeFullTarget", formatMoney(result.conservative));
   setText("comparisonYears", state.scenario === "endowment" ? "金鹅永续现金流模型" : `${state.years} 年现金流模型`, false);
-  setText("modelColumnTitle", state.scenario === "endowment" ? "现金流反推（金鹅永续）" : `现金流反推（${state.years} 年）`, false);
+  const headerByCaliber = state.curveSource === "principal"
+    ? "我的本金方案"
+    : (state.scenario === "endowment" ? "现金流反推（金鹅永续）" : `现金流反推（${state.years} 年）`);
+  setText("modelColumnTitle", headerByCaliber, false);
 
-  const modelTargetValue = result.reverseFull === null ? 0 : result.reverseFull;
+  const modelTargetValue = state.curveSource === "principal"
+    ? result.activeFullTarget
+    : (result.reverseFull === null ? 0 : result.reverseFull);
   const maxTarget = Math.max(modelTargetValue, result.conservative, 1);
   $("modelBar").style.width = `${(modelTargetValue / maxTarget) * 100}%`;
   $("conservativeBar").style.width = `${(result.conservative / maxTarget) * 100}%`;
@@ -475,12 +480,20 @@ function updateAll() {
   $("reserveLegend").hidden = !projection.points.some((point) => point.reserveOffset > 0);
   $("turningLegend").hidden = !projection.turningPoint;
 
+  // 模型列跟随全盘口径：反推目标口径用反推值，我的本金口径用用户输入的本金，
+  // 此时各分项按 activePrincipal + 储备 + 10% 安全垫重新拆解，与现金流/MC 同源。
+  const useMyPrincipal = state.curveSource === "principal";
+  const modelPrincipal = useMyPrincipal ? result.activePrincipal : result.reverse;
+  const modelSafetyPad = useMyPrincipal
+    ? result.activeFullTarget / 1.1 * 0.1
+    : (result.reverseBase === null ? null : result.reverseBase * 0.1);
+  const modelFull = useMyPrincipal ? result.activeFullTarget : result.reverseFull;
   const rows = [
-    { label: state.scenario === "endowment" ? "永续投资本金" : "投资本金 / 40 倍年支出", model: result.reverse, conservative: result.annual * 40 },
+    { label: state.scenario === "endowment" ? "永续投资本金" : "投资本金 / 40 倍年支出", model: modelPrincipal, conservative: result.annual * 40 },
     { label: "医疗储备", model: result.medicalReserve, conservative: result.medicalReserve },
     { label: "36 个月现金储备", model: result.cashReserve, conservative: result.cashReserve },
-    { label: "10% 安全垫", model: result.reverseBase === null ? null : result.reverseBase * 0.1, conservative: result.conservativeBase * 0.1, subtle: true },
-    { label: "完整目标合计", model: result.reverseFull, conservative: result.conservative, total: true }
+    { label: "10% 安全垫", model: modelSafetyPad, conservative: result.conservativeBase * 0.1, subtle: true },
+    { label: "完整目标合计", model: modelFull, conservative: result.conservative, total: true }
   ];
   $("breakdownRows").innerHTML = rows.map((row) => `
     <tr class="${row.total ? "total-row" : ""} ${row.subtle ? "subtle-row" : ""}">
@@ -812,6 +825,65 @@ function scheduleMonteCarlo() {
   }, 180);
 }
 
+function renderFailureAttribution(mc) {
+  const wrap = $("mcAttribution");
+  if (!wrap) return;
+  const attr = mc.failureAttribution;
+  if (!attr || attr.failedCount === 0) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  const gapText = attr.geoGap !== null && attr.geoGap > 0
+    ? `失败路径的几何年化收益平均为 <strong>${formatPercent(attr.geoFailed * 100)}</strong>，明显低于成功路径的 <strong>${formatPercent(attr.geoSuccess * 100)}</strong>（差 ${(attr.geoGap * 100).toFixed(1)} 个百分点）。`
+    : `失败与成功路径的收益水平接近，失败更多源于发生时点而非平均收益。`;
+  $("mcAttrLead").innerHTML = `${attr.failedCount.toLocaleString("zh-CN")} 条路径未能走完。${gapText}主因分布如下（每条失败路径只归入一类，合计 100%）：`;
+
+  const primaryColors = {
+    return: "var(--ink-soft)", order: "var(--red)", tail: "var(--orange)",
+    expense: "var(--gold)", principal: "var(--teal)"
+  };
+  const renderBars = (items, colorOf, labelOf, noteOf) => items
+    .filter((item) => item.share > 0.0005)
+    .map((item) => {
+      const pct = (item.share * 100).toFixed(0);
+      const color = colorOf(item);
+      return `<div class="mc-attr-row">
+        <div class="mc-attr-row-head"><span>${labelOf(item)}</span><strong>${pct}%</strong></div>
+        <div class="mc-attr-track"><div class="mc-attr-fill" style="width:${Math.max(1, item.share * 100).toFixed(1)}%;background:${color}"></div></div>
+        ${noteOf(item) ? `<div class="mc-attr-note">${noteOf(item)}</div>` : ""}
+      </div>`;
+    }).join("") || '<div class="mc-attr-none">无显著项</div>';
+
+  $("mcAttrPrimary").innerHTML = renderBars(
+    attr.primary,
+    (item) => primaryColors[item.key] || "var(--ink-soft)",
+    (item) => item.label,
+    () => ""
+  );
+  // 可控杠杆排在前面，市场类假设排在后面；各自组内按救活率排序。
+  const controlRank = { expense: 0, principal: 1, volatility: 2, order: 3 };
+  const orderedRemedies = [...attr.remedies].sort(
+    (a, b) => controlRank[a.key] - controlRank[b.key] || b.share - a.share
+  );
+  $("mcAttrRemedies").innerHTML = orderedRemedies.map((item) => {
+    const pct = (item.share * 100).toFixed(0);
+    const controllable = item.key === "expense" || item.key === "principal";
+    const badge = controllable ? '<span class="mc-attr-badge">可主动调整</span>' : '<span class="mc-attr-badge muted">市场假设</span>';
+    return `<div class="mc-attr-row">
+      <div class="mc-attr-row-head"><span>${item.label}${badge}</span><strong>${pct}%</strong></div>
+      <div class="mc-attr-track"><div class="mc-attr-fill" style="width:${Math.max(1, item.share * 100).toFixed(1)}%;background:var(--teal)"></div></div>
+      <div class="mc-attr-note">${item.note} · 救回 ${item.rescued.toLocaleString("zh-CN")} 条</div>
+    </div>`;
+  }).join("");
+
+  const top = attr.primary[0];
+  const actionable = attr.remedies.filter((r) => r.key === "expense" || r.key === "principal");
+  const bestActionable = actionable.sort((a, b) => b.share - a.share)[0];
+  setText("mcAttrFoot", `最主要失败原因：${top.label}（${(top.share * 100).toFixed(0)}%）。收益与顺序属市场不可控；可主动调整的杠杆中，${bestActionable.label}可救回约 ${(bestActionable.share * 100).toFixed(0)}% 的失败路径。此归因仅为诊断，不代表收益可被人为调节。`, false);
+}
+
 function renderMonteCarlo(result) {
   if (!$("mcHistogram")) return;
   const mc = runMonteCarlo({
@@ -821,7 +893,8 @@ function renderMonteCarlo(result) {
     runs: state.mcRuns,
     seed: 20261119,
     startingPrincipal: result.chartStart,
-    expenseFlexibility: state.mcFlexibility
+    expenseFlexibility: state.mcFlexibility,
+    withAttribution: true
   });
 
   setText("mcBadge", `${mc.runs.toLocaleString("zh-CN")} 次模拟 · ${mc.profile.label}`, false);
@@ -829,22 +902,25 @@ function renderMonteCarlo(result) {
     ? "已计入页面红利退休金；"
     : "未计入页面红利退休金（红利面板当前 Disable）；";
   const leadByCurve = `全盘口径起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`;
+  const genericLead = `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${dividendTag}${leadByCurve}`;
   setText("mcLead", mc.holdings
-    ? `按近 10 年回测校准：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}；历史组合 CAGR ${formatPercent(mc.profile.backtest.cagr)}、最大回撤 ${formatPercent(mc.profile.backtest.maxDrawdown)}、夏普 ${mc.profile.backtest.sharpe.toFixed(2)}。${dividendTag}${leadByCurve}`
-    : `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${dividendTag}${leadByCurve}`, false);
+    ? (mc.profile.calibrated
+      ? `按 ${mc.profile.backtest.period} 回测校准：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}；历史组合 CAGR ${formatPercent(mc.profile.backtest.cagr)}、最大回撤 ${formatPercent(mc.profile.backtest.maxDrawdown)}、夏普 ${mc.profile.backtest.sharpe.toFixed(2)}。${mc.profile.backtest.period === MC_PROFILE_GROUPS.etfSample ? "该组合采用 ETF 上市以来短样本，与 2011 年起样本的版本不可直接横比；" : ""}${dividendTag}${leadByCurve}`
+      : genericLead)
+    : genericLead, false);
 
   const holdingsWrap = $("mcHoldings");
   if (mc.holdings) {
     holdingsWrap.hidden = false;
+    const showAssumptions = !mc.profile.calibrated;
     $("mcHoldingsTable").innerHTML = `
-      <thead><tr><th>持仓</th><th>标的 / 基金</th><th>权重</th><th>示意年化</th><th>示意波动</th></tr></thead>
+      <thead><tr><th>持仓</th><th>标的 / 基金</th><th>权重</th>${showAssumptions ? "<th>示意年化</th><th>示意波动</th>" : ""}</tr></thead>
       <tbody>${mc.holdings.map((item) => `
         <tr>
           <td>${item.name}</td>
           <td>${item.fund}</td>
           <td>${item.weight.toFixed(1)}%</td>
-          <td>${formatPercent(item.mu)}</td>
-          <td>${formatPercent(item.sigma)}</td>
+          ${showAssumptions ? `<td>${formatPercent(item.mu)}</td><td>${formatPercent(item.sigma)}</td>` : ""}
         </tr>`).join("")}</tbody>`;
   } else {
     holdingsWrap.hidden = true;
@@ -892,6 +968,8 @@ function renderMonteCarlo(result) {
         <text x="${centerX.toFixed(1)}" y="${height - 8}" text-anchor="middle" fill="var(--muted)" font-size="9">${bucket.label}</text>
         ${bucket.count > 0 ? `<text x="${centerX.toFixed(1)}" y="${(height - margin.bottom - barHeight - 4).toFixed(1)}" text-anchor="middle" fill="var(--ink-soft)" font-size="9">${bucket.count}</text>` : ""}`;
     }).join("")}`;
+
+  renderFailureAttribution(mc);
 
   const error = mc.conservationMaxError;
   const conservation = $("mcConservation");

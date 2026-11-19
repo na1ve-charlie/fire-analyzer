@@ -41,6 +41,33 @@ test("细水长流目标曲线期末归零", () => {
   assert.equal(result.projection.points[50].balance, 0);
 });
 
+test("全盘口径：我的本金驱动现金流与储备计划，反推值仅作对照", () => {
+  const target = calculateFirePlan(baseInput);
+  const mine = calculateFirePlan({ ...baseInput, principal: 2500000, curveSource: "principal" });
+  assert.equal(mine.chartStart, 2500000);
+  assert.equal(mine.activePrincipal, 2500000);
+  assert.equal(mine.projection.points[0].balance, 2500000);
+  assert.notEqual(mine.projection.points[50].balance, target.projection.points[50].balance);
+  // 反推值与保守目标是独立对照基准，不随口径切换改变。
+  assert.ok(Math.abs(mine.reverse - target.reverse) < 1e-6);
+  assert.ok(Math.abs(mine.conservative - target.conservative) < 1e-6);
+  // 储备利息与完整目标跟随当前口径的起算本金。
+  const expectedPad = 0.1 * (2500000 + mine.medicalReserve + mine.cashReserve);
+  assert.ok(Math.abs(mine.reservePlan.safetyPad - expectedPad) < 0.01);
+  assert.ok(Math.abs(mine.activeReserveInterest - (mine.medicalReserve + expectedPad) * mine.reserveRate) < 0.01);
+  assert.ok(Math.abs(mine.activeFullTarget - (2500000 + mine.medicalReserve + mine.cashReserve) * 1.1) < 0.01);
+  assert.ok(Math.abs(mine.principalGap - (2500000 - mine.reverse)) < 0.01);
+});
+
+test("全盘口径：反推目标模式下手动本金只影响余量对照", () => {
+  const low = calculateFirePlan({ ...baseInput, principal: 1000000, curveSource: "target" });
+  const high = calculateFirePlan({ ...baseInput, principal: 3000000, curveSource: "target" });
+  assert.equal(low.chartStart, high.chartStart);
+  assert.equal(low.projection.points[50].balance, high.projection.points[50].balance);
+  assert.equal(low.activeReserveInterest, high.activeReserveInterest);
+  assert.ok(high.principalGap > low.principalGap);
+});
+
 test("FIRE 后储备利息计入反推模型", () => {
   const result = calculateFirePlan(baseInput);
   assert.ok(result.reservePlan.annualReserveInterest > 0);

@@ -5,32 +5,145 @@
 
 import {
   simulateCustomProjection, reserveInterestForPrincipal, calculateFirePlan
-} from "./fire-engine.js?v=20261119d";
+} from "./fire-engine.js?v=20261119i";
 
-export const MC_ENGINE_VERSION = "monte-carlo.1.0.0";
+export const MC_ENGINE_VERSION = "monte-carlo.1.2.0";
 
 // sigma 为年度算术波动率的示意值；通用预设的 mu 取当前方案的年化收益率中枢。
-// “我的组合”按用户实际持仓权重与示意收益/波动假设自行计算 mu 与 sigma。
+// 六个命名组合（calibrated）按用户提供的组合级回测 CAGR 与波动率直接校准，
+// 不再由持仓权重与相关性推算；holdings 仅用于展示仓位构成。
+// 组合二五个债券版本：指数版（5–7 年基线 / 10 年 / 30 年）同为 2011 年起样本，
+// ETF 版（10 年 / 30 年）受 ETF 上市日限制同为 2023-06-13 起样本，相互之间不可直接横比。
 export const MC_PROFILES = {
-  myPortfolio: {
-    label: "我的组合",
-    sigma: 12.54,
-    note: "按近 10 年回测数据校准",
+  portfolioA: {
+    label: "组合一 · 进攻",
+    sigma: 17.43,
+    note: "按 2007 年以来长样本回测校准",
+    calibrated: true,
     backtest: {
-      period: "2016-11-22 ~ 2026-11-18",
-      cagr: 6.73,
-      volatility: 12.54,
-      maxDrawdown: -20.15,
-      sharpe: 0.37,
-      riskFreeRate: 2.11
+      period: "2007-01-04 ~ 2026-11-09",
+      cagr: 13.48,
+      volatility: 17.43,
+      maxDrawdown: -54.49,
+      sharpe: 0.76,
+      riskFreeRate: 1.0
     },
     holdings: [
-      { name: "红利低波", fund: "D红利低波（中证红利低波 H30269）", group: "cnDividend", weight: 42, mu: 4.16, sigma: 16.58 },
-      { name: "红利低波-波段", fund: "D红利低波（同底层回测）", group: "cnDividend", weight: 18, mu: 4.16, sigma: 16.58 },
-      { name: "量化微盘", fund: "华夏新锦绣混合（002833/002834）", group: "cnMicro", weight: 4.5, mu: 10.86, sigma: 18.30 },
-      { name: "纳斯达克100", fund: "W美股指数（纳指ETF 513100）", group: "usEquity", weight: 4.5, mu: 19.95, sigma: 23.02 },
-      { name: "标普500", fund: "W美股指数（标普ETF 513500）", group: "usEquity", weight: 21, mu: 12.62, sigma: 18.95 },
-      { name: "现金", fund: "C现金（货币基金七天年化）", group: "cash", weight: 10, mu: 2.11, sigma: 0 }
+      { name: "红利低波全收益", fund: "中证红利低波动全收益（H20269）", group: "cnDividend", weight: 60 },
+      { name: "标普500全收益", fund: "标普 500 全收益（^SP500TR）", group: "usEquity", weight: 18 },
+      { name: "纳指100全收益", fund: "纳斯达克 100 全收益（XNDX）", group: "usEquity", weight: 7.5 },
+      { name: "微盘股等权", fund: "万得微盘股日频等权（8841431.WI）", group: "cnMicro", weight: 4.5 },
+      { name: "现金", fund: "现金（年化 1.4%）", group: "cash", weight: 10 }
+    ]
+  },
+  portfolioB57: {
+    label: "组合二 · 5–7年基线",
+    sigma: 10.74,
+    note: "按 2011 年以来指数版回测校准",
+    calibrated: true,
+    backtest: {
+      period: "2011-01-04 ~ 2026-11-09",
+      cagr: 10.75,
+      volatility: 10.74,
+      maxDrawdown: -22.18,
+      sharpe: 0.91,
+      riskFreeRate: 1.0
+    },
+    holdings: [
+      { name: "红利低波全收益", fund: "中证红利低波动全收益（H20269）", group: "cnDividend", weight: 42 },
+      { name: "标普500全收益", fund: "标普 500 全收益（^SP500TR）", group: "usEquity", weight: 18 },
+      { name: "纳指100全收益", fund: "纳斯达克 100 全收益（XNDX）", group: "usEquity", weight: 7.5 },
+      { name: "微盘股等权", fund: "万得微盘股日频等权（8841431.WI）", group: "cnMicro", weight: 4.5 },
+      { name: "5–7年利率债", fund: "中债国债及政策性银行债 5–7 年财富（CBA05841.CB）", group: "cnBond", weight: 18 },
+      { name: "现金", fund: "现金（年化 1.4%）", group: "cash", weight: 10 }
+    ]
+  },
+  portfolioB10y: {
+    label: "组合二 · 10年指数",
+    sigma: 10.73,
+    note: "按 2011 年以来指数版回测校准",
+    calibrated: true,
+    backtest: {
+      period: "2011-01-04 ~ 2026-11-09",
+      cagr: 10.73,
+      volatility: 10.73,
+      maxDrawdown: -22.2,
+      sharpe: 0.91,
+      riskFreeRate: 1.0
+    },
+    holdings: [
+      { name: "红利低波全收益", fund: "中证红利低波动全收益（H20269）", group: "cnDividend", weight: 42 },
+      { name: "标普500全收益", fund: "标普 500 全收益（^SP500TR）", group: "usEquity", weight: 18 },
+      { name: "纳指100全收益", fund: "纳斯达克 100 全收益（XNDX）", group: "usEquity", weight: 7.5 },
+      { name: "微盘股等权", fund: "万得微盘股日频等权（8841431.WI）", group: "cnMicro", weight: 4.5 },
+      { name: "10年国债指数", fund: "中债 10 年期国债财富（CBA04501.CB）", group: "cnBond", weight: 18 },
+      { name: "现金", fund: "现金（年化 1.4%）", group: "cash", weight: 10 }
+    ]
+  },
+  portfolioB30y: {
+    label: "组合二 · 30年指数",
+    sigma: 10.73,
+    note: "按 2011 年以来指数版回测校准",
+    calibrated: true,
+    backtest: {
+      period: "2011-01-04 ~ 2026-11-09",
+      cagr: 11.12,
+      volatility: 10.73,
+      maxDrawdown: -21.87,
+      sharpe: 0.94,
+      riskFreeRate: 1.0
+    },
+    holdings: [
+      { name: "红利低波全收益", fund: "中证红利低波动全收益（H20269）", group: "cnDividend", weight: 42 },
+      { name: "标普500全收益", fund: "标普 500 全收益（^SP500TR）", group: "usEquity", weight: 18 },
+      { name: "纳指100全收益", fund: "纳斯达克 100 全收益（XNDX）", group: "usEquity", weight: 7.5 },
+      { name: "微盘股等权", fund: "万得微盘股日频等权（8841431.WI）", group: "cnMicro", weight: 4.5 },
+      { name: "30年国债指数", fund: "中债 30 年期国债财富（CBA21801.CB）", group: "cnBond", weight: 18 },
+      { name: "现金", fund: "现金（年化 1.4%）", group: "cash", weight: 10 }
+    ]
+  },
+  portfolioB10etf: {
+    label: "组合二 · 10年ETF",
+    sigma: 8.55,
+    note: "按 ETF 上市以来短样本回测校准",
+    calibrated: true,
+    backtest: {
+      period: "2023-06-13 ~ 2026-11-09",
+      cagr: 10.98,
+      volatility: 8.55,
+      maxDrawdown: -6.71,
+      sharpe: 1.15,
+      riskFreeRate: 1.0
+    },
+    holdings: [
+      { name: "红利低波全收益", fund: "中证红利低波动全收益（H20269）", group: "cnDividend", weight: 42 },
+      { name: "标普500全收益", fund: "标普 500 全收益（^SP500TR）", group: "usEquity", weight: 18 },
+      { name: "纳指100全收益", fund: "纳斯达克 100 全收益（XNDX）", group: "usEquity", weight: 7.5 },
+      { name: "微盘股等权", fund: "万得微盘股日频等权（8841431.WI）", group: "cnMicro", weight: 4.5 },
+      { name: "10年国债ETF", fund: "国泰上证 10 年期国债 ETF（511260.SH）", group: "cnBond", weight: 18 },
+      { name: "现金", fund: "现金（年化 1.4%）", group: "cash", weight: 10 }
+    ]
+  },
+  portfolioB30etf: {
+    label: "组合二 · 30年ETF",
+    sigma: 8.51,
+    note: "按 ETF 上市以来短样本回测校准",
+    calibrated: true,
+    backtest: {
+      period: "2023-06-13 ~ 2026-11-09",
+      cagr: 11.62,
+      volatility: 8.51,
+      maxDrawdown: -6.27,
+      sharpe: 1.23,
+      riskFreeRate: 1.0
+    },
+    holdings: [
+      { name: "红利低波全收益", fund: "中证红利低波动全收益（H20269）", group: "cnDividend", weight: 42 },
+      { name: "标普500全收益", fund: "标普 500 全收益（^SP500TR）", group: "usEquity", weight: 18 },
+      { name: "纳指100全收益", fund: "纳斯达克 100 全收益（XNDX）", group: "usEquity", weight: 7.5 },
+      { name: "微盘股等权", fund: "万得微盘股日频等权（8841431.WI）", group: "cnMicro", weight: 4.5 },
+      { name: "30年国债ETF", fund: "鹏扬中债 30 年期国债 ETF（511090.SH）", group: "cnBond", weight: 18 },
+      { name: "现金", fund: "现金（年化 1.4%）", group: "cash", weight: 10 }
     ]
   },
   balanced: { label: "股债 50/50", sigma: 9, note: "中等波动" },
@@ -42,7 +155,7 @@ export const MC_PROFILES = {
 function correlation(groupA, groupB) {
   if (groupA === groupB) {
     if (groupA === "cash") return 1;
-    if (groupA === "cnDividend") return 1; // 两档红利低波共用同一底层指数
+    if (groupA === "cnDividend") return 1;
     if (groupA === "usEquity") return 0.82; // 513100/513500 近十年实测约 0.82
     return 1;
   }
@@ -50,6 +163,9 @@ function correlation(groupA, groupB) {
   if (pair === "cnDividend|cnMicro") return 0.50;
   if (pair === "cnDividend|usEquity") return 0.24;
   if (pair === "cnMicro|usEquity") return 0.28;
+  if (pair === "cnBond|cnDividend") return 0.05;
+  if (pair === "cnBond|cnMicro") return 0.05;
+  if (pair === "cnBond|usEquity") return 0;
   return 0; // 现金与其他资产按低相关处理
 }
 
@@ -72,6 +188,20 @@ export function computePortfolioStats(holdings) {
   }
   return { mu, sigma: Math.sqrt(variance), totalWeight };
 }
+
+// 组合二各债券版本共享同一条样本口径说明，供前端与文案复用。
+export const MC_PROFILE_GROUPS = {
+  calibratedNames: ["portfolioA", "portfolioB57", "portfolioB10y", "portfolioB30y", "portfolioB10etf", "portfolioB30etf"],
+  bondVariants: {
+    portfolioB57: "指数版（2011 年起）",
+    portfolioB10y: "指数版（2011 年起）",
+    portfolioB30y: "指数版（2011 年起）",
+    portfolioB10etf: "ETF 版（2023-06 起）",
+    portfolioB30etf: "ETF 版（2023-06 起）"
+  },
+  indexSample: "2011-01-04 ~ 2026-11-09",
+  etfSample: "2023-06-13 ~ 2026-11-09"
+};
 
 function clamp(value, min, max, fallback) {
   const numeric = Number(value);
@@ -130,6 +260,87 @@ function buildFailureBuckets(failedYears, years, bucketSize = 10) {
   return buckets;
 }
 
+// 用一条指定收益路径做轻量存续判定（不构造 points，专供反事实归因使用）。
+// 判定口径与 simulateCustomProjection 完全一致：资金缺口 > 1 元即失败；
+// 金鹅永续还要求期末实际购买力不低于本金。
+function pathSurvives({
+  principal, annualExpense, inflation, years, annualReserveInterest,
+  dividendIncomeByYear, returnPath, isEndowment,
+  expenseFlexibility, flexibilityDrawdown, flexibilityCut
+}) {
+  let balance = principal;
+  let peak = principal;
+  for (let year = 1; year <= years; year += 1) {
+    const start = balance;
+    const yearReturn = Number(returnPath && returnPath[year - 1]);
+    const investmentReturn = start * (Number.isFinite(yearReturn) ? yearReturn : 0);
+    const available = start + investmentReturn;
+    peak = Math.max(peak, start);
+    const drawdown = peak > 0 ? 1 - start / peak : 0;
+    let gross = annualExpense * Math.pow(1 + inflation, year - 1);
+    if (expenseFlexibility && drawdown > flexibilityDrawdown) gross *= 1 - flexibilityCut;
+    const reserveOffset = Math.min(gross, Math.max(0, annualReserveInterest));
+    const dividendIncome = Math.max(0, Number(dividendIncomeByYear && dividendIncomeByYear[year]) || 0);
+    const dividendOffset = Math.min(gross - reserveOffset, dividendIncome);
+    const expense = gross - reserveOffset - dividendOffset;
+    if (expense - available > 1) return false;
+    balance = Math.max(0, available - expense);
+  }
+  if (isEndowment && balance / Math.pow(1 + inflation, years) < principal - 1) return false;
+  return true;
+}
+
+// 几何平均年化收益：比算术平均更能反映长期复利体验。
+function geometricMeanReturn(returnPath) {
+  if (!Array.isArray(returnPath) || returnPath.length === 0) return 0;
+  let logSum = 0;
+  for (const r of returnPath) logSum += Math.log(1 + clamp(r, -0.9999, 100, 0));
+  return Math.exp(logSum / returnPath.length) - 1;
+}
+
+// 失败归因：对每条失败路径做 4 项反事实测试，统计各补救措施的救活率；
+// 主因按「收益特征画像」归类（早期/后期收益差、尾部亏损），比反事实组合更有区分度。
+function attributeFailure({
+  returnPath, geoReturn, mu, principal, annualExpense, inflation, years,
+  annualReserveInterest, dividendIncomeByYear, isEndowment,
+  expenseFlexibility, flexibilityDrawdown, flexibilityCut, fireResult
+}) {
+  const common = {
+    annualExpense, inflation, years, dividendIncomeByYear, isEndowment,
+    expenseFlexibility, flexibilityDrawdown, flexibilityCut
+  };
+  // 反事实救活率：回答「调哪个杠杆能把这条失败路径救回来」。
+  const reorderPath = [...returnPath].sort((a, b) => b - a); // 好年份提前：检验顺序风险
+  const medianPath = new Array(years).fill(mu);               // 每年稳定中枢：检验波动拖累
+  const rescued = {
+    order: pathSurvives({ ...common, principal, annualReserveInterest, returnPath: reorderPath }),
+    volatility: pathSurvives({ ...common, principal, annualReserveInterest, returnPath: medianPath }),
+    expense: pathSurvives({ ...common, principal, annualReserveInterest, returnPath, annualExpense: annualExpense * 0.8 })
+  };
+  const upPrincipal = principal * 1.2;
+  rescued.principal = pathSurvives({
+    ...common, principal: upPrincipal,
+    annualReserveInterest: reserveInterestForStartingPrincipal(fireResult, upPrincipal),
+    returnPath
+  });
+
+  // 互斥主因：按失败路径自身的收益特征归类，互补且可解释。
+  // 先判断「结构性可救」——如果本金或支出单独调整即可救活，说明失败根源不在市场运气。
+  // 再看收益画像——前期差后期好=顺序风险；出现极端亏损年=尾部冲击；否则=整体收益偏低。
+  const half = Math.floor(years / 2);
+  const earlyGeo = geometricMeanReturn(returnPath.slice(0, half));
+  const lateGeo = geometricMeanReturn(returnPath.slice(half));
+  const worstYear = Math.min(...returnPath);
+  let primary;
+  if (rescued.principal && !rescued.volatility) primary = "principal";
+  else if (rescued.expense && !rescued.volatility) primary = "expense";
+  else if (lateGeo - earlyGeo >= 0.012) primary = "order";       // 后期明显好于前期 = 顺序不利
+  else if (worstYear <= -0.2) primary = "tail";                   // 单年极端亏损
+  else primary = "return";                                        // 整体收益偏低
+
+  return { rescued, primary, geoReturn };
+}
+
 /**
  * 生成 N 条随机收益路径，并逐条调用 simulateCustomProjection。
  * 成功定义：测算期内不出现缺口；金鹅永续模式还要求期末实际购买力不低于起点本金。
@@ -144,22 +355,25 @@ export function runMonteCarlo({
   expenseFlexibility = false,
   flexibilityDrawdown = 0.2,
   flexibilityCut = 0.1,
-  sigmaOverride = null
+  sigmaOverride = null,
+  withAttribution = false
 } = {}) {
   if (!fireResult || !fireResult.assumptions) {
     throw new Error("runMonteCarlo 需要 calculateFirePlan 的结果");
   }
 
   const profile = MC_PROFILES[profileKey] ? MC_PROFILES[profileKey] : MC_PROFILES.balanced;
-  const portfolioStats = profile.holdings ? computePortfolioStats(profile.holdings) : null;
+  // 回测校准组合（组合一/二/三）：模拟中枢直接取回测 CAGR 与波动率，
+  // 不再用持仓权重×相关性推算——那会偏离用户实测的组合级数字。
+  const portfolioStats = profile.calibrated ? null : (profile.holdings ? computePortfolioStats(profile.holdings) : null);
   const runCount = Math.round(clamp(runs, 100, 20000, 5000));
   const randomSeed = Math.floor(clamp(seed, 0, 2147483647, 20261119));
   const years = Math.round(clamp(fireInput.years ?? fireResult.assumptions.years, 1, 80, 50));
   const inputMu = clamp((fireInput.returnRate ?? fireResult.assumptions.returnRate) / 100, -0.99, 1, 0.05);
-  const mu = portfolioStats ? portfolioStats.mu : inputMu;
+  const mu = portfolioStats ? portfolioStats.mu : (profile.calibrated ? profile.backtest.cagr / 100 : inputMu);
   const sigmaPercent = sigmaOverride !== null && sigmaOverride !== undefined
     ? Number(sigmaOverride)
-    : (portfolioStats ? portfolioStats.sigma * 100 : profile.sigma);
+    : (portfolioStats ? portfolioStats.sigma * 100 : (profile.calibrated ? profile.backtest.volatility : profile.sigma));
   const sigma = clamp(sigmaPercent, 0, 100, profile.sigma) / 100;
   const principal = clamp(startingPrincipal ?? fireResult.chartStart ?? fireInput.principal ?? 0, 0, 1e12, 0);
   const inflation = Number(fireResult.inflation) || 0;
@@ -175,6 +389,11 @@ export function runMonteCarlo({
   const endRealBalances = [];
   const minBalances = [];
   const failedYears = [];
+  const attributionStats = {
+    geoFailed: [], geoSuccess: [],
+    rescued: { order: 0, volatility: 0, expense: 0, principal: 0, any: 0 },
+    primary: { order: 0, tail: 0, expense: 0, principal: 0, return: 0 }
+  };
   let successCount = 0;
   let conservationMaxError = 0;
   let flexAppliedCount = 0;
@@ -218,12 +437,70 @@ export function runMonteCarlo({
     endBalances.push(endingBalance);
     endRealBalances.push(realEndingBalance);
     minBalances.push(simulation.minBalance ?? Math.min(...simulation.points.map((point) => point.balance)));
-    if (survived) successCount += 1;
-    else failedYears.push(simulation.depletionYear ?? years);
+
+    if (survived) {
+      successCount += 1;
+      if (withAttribution) attributionStats.geoSuccess.push(geometricMeanReturn(returnPath));
+    } else {
+      failedYears.push(simulation.depletionYear ?? years);
+      if (withAttribution) {
+        const geoReturn = geometricMeanReturn(returnPath);
+        attributionStats.geoFailed.push(geoReturn);
+        const attribution = attributeFailure({
+          returnPath, geoReturn, mu, principal, annualExpense: fireResult.annual,
+          inflation, years, annualReserveInterest, dividendIncomeByYear, isEndowment,
+          expenseFlexibility, flexibilityDrawdown, flexibilityCut, fireResult
+        });
+        for (const key of ["order", "volatility", "expense", "principal"]) {
+          if (attribution.rescued[key]) attributionStats.rescued[key] += 1;
+        }
+        if (Object.values(attribution.rescued).some(Boolean)) attributionStats.rescued.any += 1;
+        attributionStats.primary[attribution.primary] += 1;
+      }
+    }
   }
 
   const sortedEnd = [...endBalances].sort((a, b) => a - b);
   const sortedMin = [...minBalances].sort((a, b) => a - b);
+
+  let failureAttribution = null;
+  if (withAttribution && failedYears.length > 0) {
+    const failed = failedYears.length;
+    const avg = (arr) => arr.length ? arr.reduce((sum, v) => sum + v, 0) / arr.length : null;
+    const geoFailed = avg(attributionStats.geoFailed);
+    const geoSuccess = avg(attributionStats.geoSuccess);
+    const remedyMeta = [
+      { key: "order", label: "收益顺序更理想", note: "把高收益年份提前，检验顺序风险" },
+      { key: "volatility", label: "每年稳定拿到中枢收益", note: "抹平波动，检验波动拖累" },
+      { key: "expense", label: "年支出降低 20%", note: "检验支出压力" },
+      { key: "principal", label: "本金提高 20%", note: "检验本金是否不足" }
+    ];
+    const primaryMeta = [
+      { key: "return", label: "收益整体偏低" },
+      { key: "order", label: "收益顺序不利" },
+      { key: "tail", label: "极端亏损年份" },
+      { key: "expense", label: "支出压力偏高" },
+      { key: "principal", label: "本金不足" }
+    ];
+    const sumPrimary = Object.values(attributionStats.primary).reduce((s, v) => s + v, 0) || 1;
+    failureAttribution = {
+      failedCount: failed,
+      geoFailed,
+      geoSuccess,
+      geoGap: geoFailed !== null && geoSuccess !== null ? geoSuccess - geoFailed : null,
+      remedies: remedyMeta.map((meta) => ({
+        ...meta,
+        rescued: attributionStats.rescued[meta.key],
+        share: attributionStats.rescued[meta.key] / failed
+      })),
+      rescuableAny: attributionStats.rescued.any / failed,
+      primary: primaryMeta.map((meta) => ({
+        ...meta,
+        count: attributionStats.primary[meta.key],
+        share: attributionStats.primary[meta.key] / sumPrimary
+      })).sort((a, b) => b.share - a.share)
+    };
+  }
 
   return {
     engineVersion: MC_ENGINE_VERSION,
@@ -253,7 +530,8 @@ export function runMonteCarlo({
     p50Min: percentile(sortedMin, 0.5),
     buckets: buildFailureBuckets(failedYears, years),
     conservationMaxError,
-    flexAppliedCount
+    flexAppliedCount,
+    failureAttribution
   };
 }
 
@@ -261,7 +539,7 @@ export function runMonteCarlo({
 export function computeRequiredPrincipalDistribution({
   fireResult,
   fireInput = {},
-  profileKey = "myPortfolio",
+  profileKey = "portfolioA",
   runs = 2000,
   seed = 20261119,
   startingPrincipal,
@@ -275,12 +553,12 @@ export function computeRequiredPrincipalDistribution({
     throw new Error("computeRequiredPrincipalDistribution 需要 calculateFirePlan 的结果");
   }
   const profile = MC_PROFILES[profileKey] ? MC_PROFILES[profileKey] : MC_PROFILES.balanced;
-  const stats = profile.holdings ? computePortfolioStats(profile.holdings) : null;
+  const stats = profile.calibrated ? null : (profile.holdings ? computePortfolioStats(profile.holdings) : null);
   const runCount = Math.round(clamp(runs, 100, 5000, 2000));
   const randomSeed = Math.floor(clamp(seed, 0, 2147483647, 20261119));
   const years = Math.round(clamp(fireInput.years ?? fireResult.assumptions.years, 1, 80, 50));
-  const mu = stats ? stats.mu : clamp((fireInput.returnRate ?? fireResult.assumptions.returnRate) / 100, -0.99, 1, 0.05);
-  const sigma = clamp(stats ? stats.sigma * 100 : profile.sigma, 0, 100, profile.sigma) / 100;
+  const mu = stats ? stats.mu : (profile.calibrated ? profile.backtest.cagr / 100 : clamp((fireInput.returnRate ?? fireResult.assumptions.returnRate) / 100, -0.99, 1, 0.05));
+  const sigma = clamp(stats ? stats.sigma * 100 : (profile.calibrated ? profile.backtest.volatility : profile.sigma), 0, 100, profile.sigma) / 100;
   const sigmaLog = sigma > 0 ? Math.log(1 + sigma) : 0;
   const muLog = Math.log(1 + mu);
   const inflation = Number(fireResult.inflation) || 0;
@@ -333,7 +611,7 @@ export function computeRequiredPrincipalDistribution({
   return {
     runs: runCount,
     seed: randomSeed,
-    profileKey: profile.holdings ? profileKey : "balanced",
+    profileKey: MC_PROFILES[profileKey] ? profileKey : "balanced",
     mu, sigma, annualExpense,
     sorted,
     p50: percentile(sorted, 0.5),
@@ -351,7 +629,7 @@ export function analyzeSuccessLevers({
   runs = 2000,
   seed = 20261119,
   startingPrincipal,
-  profileKey = "myPortfolio"
+  profileKey = "portfolioA"
 } = {}) {
   const target = clamp(targetRate, 0.5, 0.99, 0.9);
   const common = { fireResult, fireInput, runs, seed, startingPrincipal, profileKey };

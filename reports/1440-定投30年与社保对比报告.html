@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>每月 1440：定投 30 年与缴社保的独立对比报告</title>
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --paper: #fffdf8;
+    --ink: #1f1d1a;
+    --muted: #6c655c;
+    --line: #ded7ca;
+    --gold: #9a6d2f;
+    --gold-soft: #f2e8d5;
+    --green: #1f7a5a;
+    --green-soft: #e8f4ef;
+    --red: #a54437;
+    --red-soft: #f8ebe8;
+    --blue: #355f86;
+    --blue-soft: #eaf1f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 40px 24px 72px; }
+  header {
+    padding: 34px 38px;
+    background: linear-gradient(135deg, #fffdf8 0%, #f5ecd9 100%);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: 0 12px 36px rgba(51, 40, 23, .06);
+  }
+  .eyebrow { color: var(--gold); font-weight: 700; letter-spacing: .08em; font-size: 13px; }
+  h1 { margin: 10px 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.2; }
+  .meta { color: var(--muted); font-size: 14px; }
+  .notice { margin-top: 18px; padding: 12px 16px; border-left: 4px solid var(--gold); background: rgba(255,255,255,.62); color: var(--muted); font-size: 14px; }
+  nav { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; background: var(--bg); border-bottom: 1px solid var(--line); margin-top: 28px; }
+  nav a { color: var(--ink); text-decoration: none; font-size: 13px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); }
+  section { margin-top: 42px; }
+  h2 { font-size: 24px; margin: 0 0 16px; padding-bottom: 10px; border-bottom: 2px solid var(--gold-soft); }
+  h3 { font-size: 18px; margin: 26px 0 10px; }
+  p { margin: 10px 0; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .card strong { display: block; font-size: 17px; margin-bottom: 8px; }
+  .card .verdict { font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 999px; display: inline-block; margin-bottom: 10px; }
+  .v-best { background: var(--green-soft); color: var(--green); }
+  .v-cond { background: var(--blue-soft); color: var(--blue); }
+  .v-risk { background: var(--red-soft); color: var(--red); }
+  .callout { background: var(--paper); border: 1px solid var(--line); border-left: 5px solid var(--gold); border-radius: 12px; padding: 18px 20px; margin: 18px 0; }
+  .callout p:first-child { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; background: var(--paper); border-radius: 12px; overflow: hidden; font-size: 14px; }
+  th, td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { background: var(--gold-soft); font-weight: 700; }
+  tr:last-child td { border-bottom: none; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .small { font-size: 13px; color: var(--muted); }
+  .chart { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px; }
+  .bar-row { display: grid; grid-template-columns: 170px 1fr 86px; gap: 12px; align-items: center; margin: 12px 0; font-size: 14px; }
+  .bar-track { height: 20px; background: #eee8dc; border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, #b78a45, #8c622a); border-radius: 999px; }
+  .bar-fill.alt { background: linear-gradient(90deg, #5c8bb4, #355f86); }
+  .bar-fill.muted { background: linear-gradient(90deg, #c9c1b3, #9d9487); }
+  .bar-value { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .formula { background: #f3efe6; border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; overflow-x: auto; }
+  ol, ul { padding-left: 22px; }
+  li { margin: 7px 0; }
+  .sources li { margin-bottom: 10px; word-break: break-word; }
+  a { color: #7b5525; }
+  footer { margin-top: 50px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  @media (max-width: 800px) {
+    .wrap { padding: 24px 16px 56px; }
+    header { padding: 26px 22px; }
+    .cards { grid-template-columns: 1fr; }
+    table { display: block; overflow-x: auto; white-space: nowrap; }
+    .bar-row { grid-template-columns: 120px 1fr 72px; gap: 8px; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav { display: none; }
+    .wrap { max-width: none; padding: 0; }
+    header, .card, .chart, table, .callout { box-shadow: none; break-inside: avoid; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">独立测算报告 · 不改动现有页面</div>
+    <h1>每月 1440 元：定投 30 年当退休金，还是交社保？</h1>
+    <div class="meta">报告日期：2026-11-17　|　测算期限：30 年　|　金额单位：人民币</div>
+    <div class="notice">边界说明：这是一份基于公开规则与可复现假设的通用测算，不是针对个人缴费记录、当地计发基数和税务情况的精算结论。最终以参保地社保经办机构核定为准。</div>
+  </header>
+
+  <nav>
+    <a href="#summary">结论</a>
+    <a href="#identity">先辨认1440</a>
+    <a href="#assumptions">测算假设</a>
+    <a href="#invest">定投结果</a>
+    <a href="#social">社保结果</a>
+    <a href="#compare">阈值与隐含收益</a>
+    <a href="#advice">行动建议</a>
+    <a href="#sources">政策依据</a>
+  </nav>
+
+  <section id="summary">
+    <h2>一、结论先行</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="verdict v-best">明确优先</span>
+        <strong>如果你是在职职工</strong>
+        <p>个人扣缴 1440 元通常对应缴费基数约 18,000 元，单位还会另缴约 2,880 元（按 16% 示意）。不建议把个人 8% 拿出来改定投：你无法把单位缴费变成现金，而社保还附带终身养老金、医疗、工伤、失业和遗属保障。</p>
+      </div>
+      <div class="card">
+        <span class="verdict v-cond">有条件比较</span>
+        <strong>如果你是灵活就业全额自缴</strong>
+        <p>1440 元对应缴费基数约 7,200 元，其中仅 576 元进入个人账户，864 元进入统筹。若把社保当作“终身、抗通胀、抗长寿”的基础现金流，继续缴社保更稳；若只比现金回报，你需要长期净收益跑赢约 <b>7.3%—9.0%</b>（取决于缴费是否随工资增长），自行定投才可能在纯金钱维度占优。</p>
+      </div>
+      <div class="card">
+        <span class="verdict v-best">更稳妥</span>
+        <strong>不要二选一</strong>
+        <p>更合理的顺序是：先保住基本社保和医保连续性，再用结余做定投；有工资个税且税率不低于 10% 时，可优先考虑每年 12,000 元个人养老金税优额度。定投适合做“增长层”，社保适合做“保底层”。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="identity">
+    <h2>二、先把“1440”翻译成缴费身份</h2>
+    <p>同样是每月 1440 元，在职职工和灵活就业人员的含义完全不同。这一步决定了比较是否公平。</p>
+    <table>
+      <thead><tr><th>身份</th><th>1440 元是什么</th><th class="num">反推缴费基数</th><th class="num">进入个人账户</th><th>统筹部分</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>在职职工</td>
+          <td>个人 8% 缴费</td>
+          <td class="num">18,000 元/月</td>
+          <td class="num">1,440 元/月</td>
+          <td>单位另缴约 2,880 元/月（16% 示意），进入统筹基金，支撑基础养老金</td>
+        </tr>
+        <tr>
+          <td>灵活就业</td>
+          <td>个人全额缴 20%</td>
+          <td class="num">7,200 元/月</td>
+          <td class="num">576 元/月（8%）</td>
+          <td>864 元/月（12%）进入统筹基金</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small">政策依据：人社部明确单位费率由 20% 降至 16%、个人 8%，灵活就业人员缴费比例 20%、其中 8% 记入个人账户。</p>
+  </section>
+
+  <section id="assumptions">
+    <h2>三、测算口径与关键假设</h2>
+    <table>
+      <thead><tr><th>参数</th><th>取值</th><th>理由与说明</th></tr></thead>
+      <tbody>
+        <tr><td>缴费/定投入手金额</td><td>1,440 元/月</td><td>第一年金额；基准情景按工资增长同步上调，另列“固定不涨”情景</td></tr>
+        <tr><td>缴费/工资年增长</td><td>3%</td><td>名义年化；参考 2025 年城镇私营单位工资名义增长 3.0%、非私营 4.3%，取中间偏保守值，不是预测</td></tr>
+        <tr><td>通货膨胀</td><td>2%</td><td>用于把 30 年后的金额折为今天购买力</td></tr>
+        <tr><td>个人账户记账利率</td><td>1.5%</td><td>2025 年多地披露的全国统一记账利率；未来可能变化</td></tr>
+        <tr><td>退休后养老金调整</td><td>2%</td><td>参考 2025 年全国总体调整 2%；非保证值，实际按年度政策和地方方案</td></tr>
+        <tr><td>缴费指数 α</td><td>基准 1.0</td><td>α = 缴费基数 ÷ 当地养老金计发基数；基准假定两者相同，另做敏感性分析</td></tr>
+        <tr><td>个人账户计发月数</td><td>139 / 117</td><td>60 岁退休按 139 月，63 岁退休按 117 月；实际按法定退休年龄核定</td></tr>
+        <tr><td>定投提取规则</td><td>4% 初始提取率</td><td>仅作对照标尺，不代表收益保证；30 年以上退休期可保守下调至 3.5%</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <p><b>重要口径：</b>社保结果采用“缴费随工资增长”的基准，因此 30 年内总缴费不是固定的 51.84 万元，而是随工资上涨；定投部分也同时给出“固定 1440”和“随工资增长”两张表，避免用不同口径得出误导性结论。</p>
+    </div>
+  </section>
+
+  <section id="invest">
+    <h2>四、方案 A：每月 1440 元自行定投 30 年</h2>
+    <h3>4.1 金额固定不涨，年末按名义收益率计算</h3>
+    <table>
+      <thead><tr><th>年化名义收益</th><th class="num">30 年末名义资产</th><th class="num">折为今天购买力</th><th class="num">按 4% 规则月提取（今日购买力）</th></tr></thead>
+      <tbody>
+        <tr><td>2%</td><td class="num">707,419</td><td class="num">390,546</td><td class="num">1,302</td></tr>
+        <tr><td>3%</td><td class="num">833,347</td><td class="num">460,066</td><td class="num">1,534</td></tr>
+        <tr><td>4%</td><td class="num">986,790</td><td class="num">544,778</td><td class="num">1,816</td></tr>
+        <tr><td>5%</td><td class="num">1,174,141</td><td class="num">648,209</td><td class="num">2,161</td></tr>
+        <tr><td>6%</td><td class="num">1,403,299</td><td class="num">774,720</td><td class="num">2,582</td></tr>
+        <tr><td>7%</td><td class="num">1,684,012</td><td class="num">929,694</td><td class="num">3,099</td></tr>
+        <tr><td>8%</td><td class="num">2,028,313</td><td class="num">1,119,772</td><td class="num">3,733</td></tr>
+      </tbody>
+    </table>
+    <h3>4.2 定投额随工资每年增长 3%</h3>
+    <table>
+      <thead><tr><th>年化名义收益</th><th class="num">30 年末名义资产</th><th class="num">折为今天购买力</th><th class="num">按 4% 规则月提取（今日购买力）</th></tr></thead>
+      <tbody>
+        <tr><td>2%</td><td class="num">1,073,998</td><td class="num">592,923</td><td class="num">1,976</td></tr>
+        <tr><td>3%</td><td class="num">1,238,352</td><td class="num">683,658</td><td class="num">2,279</td></tr>
+        <tr><td>4%</td><td class="num">1,435,953</td><td class="num">792,748</td><td class="num">2,642</td></tr>
+        <tr><td>5%</td><td class="num">1,674,188</td><td class="num">924,270</td><td class="num">3,081</td></tr>
+        <tr><td>6%</td><td class="num">1,962,124</td><td class="num">1,083,232</td><td class="num">3,611</td></tr>
+        <tr><td>7%</td><td class="num">2,310,903</td><td class="num">1,275,782</td><td class="num">4,253</td></tr>
+        <tr><td>8%</td><td class="num">2,734,204</td><td class="num">1,509,474</td><td class="num">5,032</td></tr>
+      </tbody>
+    </table>
+    <p class="small">收益率为名义年化、按月复利；表中未扣除个人养老金领取税、基金交易成本和可能的所得税。若采用 3.5% 提取率，所有“月提取”数字再乘以 0.875。</p>
+  </section>
+
+  <section id="social">
+    <h2>五、方案 B：继续缴社保 30 年</h2>
+    <p>职工基本养老金 = 基础养老金 + 个人账户养老金。基础养老金与退休时当地计发基数、缴费指数、缴费年限挂钩；个人账户养老金等于个人账户储存额除以计发月数，终身发放。</p>
+    <div class="formula">基础养老金 = 退休时计发基数 × (1 + 平均缴费指数) ÷ 2 × 缴费年限 × 1%
+个人账户养老金 = 退休时个人账户储存额 ÷ 计发月数</div>
+    <h3>5.1 基准情景：缴费指数 α = 1，缴费随工资增长</h3>
+    <table>
+      <thead><tr><th>身份</th><th>计发月数</th><th class="num">退休首月名义养老金</th><th class="num">折为今天购买力</th><th>构成</th></tr></thead>
+      <tbody>
+        <tr><td>灵活就业全额自缴</td><td>139（约 60 岁）</td><td class="num">8,127</td><td class="num">4,487</td><td>基础 2,894 + 个人账户 1,592</td></tr>
+        <tr><td>灵活就业全额自缴</td><td>117（约 63 岁）</td><td class="num">8,670</td><td class="num">4,786</td><td>基础 2,894 + 个人账户 1,892</td></tr>
+        <tr><td>在职职工（个人 8%）</td><td>139（约 60 岁）</td><td class="num">20,318</td><td class="num">11,217</td><td>基础 7,236 + 个人账户 3,981</td></tr>
+        <tr><td>在职职工（个人 8%）</td><td>117（约 63 岁）</td><td class="num">21,674</td><td class="num">11,966</td><td>基础 7,236 + 个人账户 4,730</td></tr>
+      </tbody>
+    </table>
+    <p class="small">在职职工一栏的较高结果来自单位缴费对统筹基金的贡献；这部分并不以现金发给个人，也不是“个人 1440 单独产生的收益”。若当地缴费基数显著高于或低于计发基数，结果会变化。</p>
+    <h3>5.2 灵活就业：缴费指数敏感性（60 岁计发）</h3>
+    <table>
+      <thead><tr><th>缴费基数 / 当地计发基数 α</th><th class="num">退休首月名义养老金</th><th class="num">折为今天购买力</th></tr></thead>
+      <tbody>
+        <tr><td>0.6</td><td class="num">9,875</td><td class="num">5,452</td></tr>
+        <tr><td>0.8</td><td class="num">8,783</td><td class="num">4,849</td></tr>
+        <tr><td>1.0（基准）</td><td class="num">8,127</td><td class="num">4,487</td></tr>
+        <tr><td>1.5</td><td class="num">7,254</td><td class="num">4,004</td></tr>
+        <tr><td>2.0</td><td class="num">6,817</td><td class="num">3,763</td></tr>
+      </tbody>
+    </table>
+    <p class="small">该表固定你的缴费金额为 7,200 元基数。α 越低，意味着当地计发基数更高，同一笔缴费对应的基础养老金绝对值越高；α 越高则相反。实际退休时还受当地过渡政策、缴费年限和基数上下限影响。</p>
+  </section>
+
+  <section id="compare">
+    <h2>六、直观对比与“胜出门槛”</h2>
+    <div class="chart">
+      <h3 style="margin-top:0">退休首月可用现金流（今日购买力，元/月）</h3>
+      <div class="bar-row"><span>在职职工社保</span><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><span class="bar-value">11,217</span></div>
+      <div class="bar-row"><span>灵活就业社保</span><div class="bar-track"><div class="bar-fill" style="width:40%"></div></div><span class="bar-value">4,487</span></div>
+      <div class="bar-row"><span>定投 8%（固定额）</span><div class="bar-track"><div class="bar-fill alt" style="width:33.3%"></div></div><span class="bar-value">3,733</span></div>
+      <div class="bar-row"><span>定投 7%（固定额）</span><div class="bar-track"><div class="bar-fill alt" style="width:27.6%"></div></div><span class="bar-value">3,099</span></div>
+      <div class="bar-row"><span>定投 5%（固定额）</span><div class="bar-track"><div class="bar-fill muted" style="width:19.3%"></div></div><span class="bar-value">2,161</span></div>
+      <div class="bar-row"><span>定投 3%（固定额）</span><div class="bar-track"><div class="bar-fill muted" style="width:13.7%"></div></div><span class="bar-value">1,534</span></div>
+      <p class="small">定投按 4% 初始提取率、退休后随通胀调整示意；社保按 30 年缴费、60 岁计发、退休后每年调整 2% 假设。两者都不是保证值。</p>
+    </div>
+
+    <h3>6.1 定投要追上社保，需要多高的净收益？</h3>
+    <table>
+      <thead><tr><th>要追上的对象</th><th class="num">目标资产（今日购买力）</th><th class="num">固定 1440 所需名义年化</th><th class="num">缴费随工资增长所需名义年化</th></tr></thead>
+      <tbody>
+        <tr><td>灵活就业社保 4,487 元/月</td><td class="num">1,346,100</td><td class="num">8.97%</td><td class="num">7.32%</td></tr>
+        <tr><td>在职职工社保 11,217 元/月</td><td class="num">3,365,100</td><td class="num">13.64%</td><td class="num">12.49%</td></tr>
+        <tr><td>若单位缴费也假设一起投资</td><td class="num">3,365,100</td><td class="num">8.01%</td><td class="num">6.22%</td></tr>
+      </tbody>
+    </table>
+    <p class="small">“4% 规则”只是把一次性资产转成终身现金流的近似标尺。若把提取率降到 3.5%，上述所需收益率还会进一步提高；若长期收益率不稳定，实际结果可能显著偏离。</p>
+
+    <h3>6.2 社保现金流的隐含年化收益率</h3>
+    <p>把 30 年缴费视为流出、退休后养老金视为流入，并假设退休后养老金每年名义增长 2%，可反推出社保的隐含收益率：</p>
+    <table>
+      <thead><tr><th>领取养老金年限</th><th class="num">灵活就业自缴</th><th class="num">在职职工（仅看个人 8%）</th></tr></thead>
+      <tbody>
+        <tr><td>20 年</td><td class="num">4.44%</td><td class="num">8.19%</td></tr>
+        <tr><td>25 年</td><td class="num">5.09%</td><td class="num">8.61%</td></tr>
+        <tr><td>30 年</td><td class="num">5.51%</td><td class="num">8.86%</td></tr>
+        <tr><td>35 年</td><td class="num">5.80%</td><td class="num">9.02%</td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <p><b>怎么读这张表：</b>如果你灵活就业、预计领取 25—30 年，社保的隐含收益率约 5.1%—5.5%。若你能长期、稳定、税后拿到高于这个水平的投资回报，自投才可能在纯现金维度胜出；但社保还包含长寿风险兜底和医保等权益，不能只看 IRR。在职职工仅看自己扣的 8%，隐含收益率已接近 9%，主要来自单位缴费和统筹机制，基本没有用定投替代的理由。</p>
+    </div>
+  </section>
+
+  <section id="advice">
+    <h2>七、给你的落地建议</h2>
+    <ol>
+      <li><b>先确认 1440 的身份属性。</b>在职个人扣款、灵活就业全额自缴、以及“我手里正好有 1440 可投”是三种不同问题。报告里的结论顺序也不能混用。</li>
+      <li><b>如果在职：继续足额缴，别用个人 8% 改定投。</b>单位那一份拿不到现金，放弃社保等于主动放弃一份终身、随工资和物价机制调整的年金权利。</li>
+      <li><b>如果灵活就业：把社保当底仓。</b>按当前收入选择可持续的缴费基数，避免断缴；医保缴费年限单独核对当地规定。30 年缴费已经高于 2030 年后逐步提高的最低缴费年限要求。</li>
+      <li><b>定投作为增长层，不作为唯一养老金。</b>配置要能承受 30 年波动，别用“过去几年能涨 8%”当作未来承诺；退休前 5—10 年逐步降低权益仓位和提取风险。</li>
+      <li><b>工资个税税率不低于 10% 时，优先用满个人养老金 12,000 元/年额度。</b>缴费可税前扣除、投资收益暂不征税、领取按 3% 单独计税；但它有封闭期和产品风险，也不是基本社保的替代品。</li>
+      <li><b>每年做一次复核。</b>更新缴费基数、当地计发基数、个人账户记账利率、养老金调整政策和实际投资收益率，重新比较一次；不要一次决策管 30 年。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>八、主要风险与不能忽略的口径</h2>
+    <ul>
+      <li><b>政策风险：</b>养老金调整、记账利率、退休年龄和最低缴费年限都可能变化；本报告以现行规则外推。</li>
+      <li><b>长寿风险：</b>社保终身发放，个人定投存在“人还在、钱花完”的风险；这是社保最不可替代的部分。</li>
+      <li><b>市场风险：</b>定投的 5%—8% 是假设，不是承诺；顺序风险、汇率/行业集中、费用和追涨杀跌都会拉低实际回报。</li>
+      <li><b>通胀风险：</b>养老金有法定调整机制但年度幅度不固定；投资组合的购买力取决于实际收益率。</li>
+      <li><b>医保风险：</b>职工医保退休后免缴待遇通常有最低缴费年限要求，各地差异大；定投账户不能替代医保报销。</li>
+      <li><b>流动性差异：</b>定投资产可继承、可动用；社保个人账户一般不能提前支取，但终身养老金和遗属待遇提供另一种保障。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>九、公式与可复现说明</h2>
+    <div class="formula">固定定投：FV = 1440 × [((1+i)^360 − 1) / i]，i = (1+r)^(1/12) − 1
+增长定投：每月投入 Ck = 1440 × (1+3%)^floor((k−1)/12)，逐月复利
+个人账户：A30 = Σ 12×1440×q×(1+3%)^(t−1) × (1+1.5%)^(30−t)，q 为个人记账比例
+基础养老金：Pbase = P0×(1+3%)^30 × (1+α)/2 × 30 × 1%
+实际购买力：Real = Nominal / (1+2%)^30
+4% 月提取：Real × 4% / 12
+隐含收益率：使 Σ 缴费流出/(1+IRR)^t + Σ 养老金流入/(1+IRR)^t = 0 的年化利率</div>
+    <p class="small">计算采用月末投入、按月复利；养老金现金流按年度合并、退休后每年增长 2%。所有金额四舍五入到元，比率保留两位小数。</p>
+  </section>
+
+  <section id="sources" class="sources">
+    <h2>十、政策与数据依据</h2>
+    <ol>
+      <li>人社部：《养老保险的缴费比例是多少？》——单位 16%、个人 8%，灵活就业 20%。<br><a href="https://www.mohrss.gov.cn/SYrlzyhshbzb/ztzl/rslyyhyshj/zcwd/202505/t20250513_541950.html">https://www.mohrss.gov.cn/SYrlzyhshbzb/ztzl/rslyyhyshj/zcwd/202505/t20250513_541950.html</a></li>
+      <li>人社部：《社会保险法释义（十一）》——灵活就业人员 20% 缴费，其中 8% 记入个人账户。<br><a href="https://www.mohrss.gov.cn/fgs/syshehuibaoxianfa/201208/t20120806_28572.html">https://www.mohrss.gov.cn/fgs/syshehuibaoxianfa/201208/t20120806_28572.html</a></li>
+      <li>上海市人民政府附件《基础养老金计算公式》——基础养老金与个人账户养老金公式、计发月数表。<br><a href="https://www.shanghai.gov.cn/newshanghai/xxgkfj/hff1770.pdf">https://www.shanghai.gov.cn/newshanghai/xxgkfj/hff1770.pdf</a></li>
+      <li>中国政府网：《稳妥有序实施延迟法定退休年龄》——渐进式延迟退休与最低缴费年限由 15 年逐步提高至 20 年。<br><a href="https://www.gov.cn/zhengce//202409/content_6974483.htm">https://www.gov.cn/zhengce//202409/content_6974483.htm</a></li>
+      <li>人社部、财政部：《关于 2025 年调整退休人员基本养老金的通知》——2025 年全国总体调整水平为 2%。<br><a href="https://www.mohrss.gov.cn/SYrlzyhshbzb/shehuibaozhang/zcwj/202507/t20250710_548466.html">https://www.mohrss.gov.cn/SYrlzyhshbzb/shehuibaozhang/zcwj/202507/t20250710_548466.html</a></li>
+      <li>中国人大网：《中华人民共和国社会保险法》第十八条——根据职工平均工资增长、物价上涨情况适时提高基本养老保险待遇。<br><a href="http://www.npc.gov.cn/npc/c2/c10134/201905/t20190522_175815.html">http://www.npc.gov.cn/npc/c2/c10134/201905/t20190522_175815.html</a></li>
+      <li>国家统计局：《2025 年城镇单位就业人员年平均工资情况》——非私营 129,441 元、私营 71,590 元。<br><a href="https://www.stats.gov.cn/sj/zxfb/202605/t20260515_1963707.html">https://www.stats.gov.cn/sj/zxfb/202605/t20260515_1963707.html</a></li>
+      <li>财政部、税务总局：《关于在全国范围实施个人养老金个人所得税优惠政策的公告》——12,000 元/年税前扣除，领取按 3% 单独计税。<br><a href="https://szs.mof.gov.cn/zhengcefabu/202412/t20241213_3949608.htm">https://szs.mof.gov.cn/zhengcefabu/202412/t20241213_3949608.htm</a></li>
+      <li>地方人社部门 2025 年度信息披露——城镇职工基本养老保险个人账户记账利率 1.5%。<br><a href="https://rsj.nc.gov.cn/ncsrsj/zdhy/202607/6e6eac6e07d3485c85cb47d47de1bfb2.shtml">https://rsj.nc.gov.cn/ncsrsj/zdhy/202607/6e6eac6e07d3485c85cb47d47de1bfb2.shtml</a></li>
+    </ol>
+  </section>
+
+  <footer>
+    报告版本：v1.0 · 生成日期：2026-11-17 · 文件独立于 FIRE 页面，未修改 fire-site 或 fire-site-online 中的任何文件。
+  </footer>
+</div>
+</body>
+</html>

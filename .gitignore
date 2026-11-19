@@ -1,6 +1,8 @@
 # 测试与浏览器缓存
 fire-site/.chrome-*/
 fire-site/*.png
+fire-site/node_modules/
+fire-site/package-lock.json
 
 # WorkBuddy 运行时标记
 .wbapp_*.genie
