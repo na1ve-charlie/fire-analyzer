@@ -376,12 +376,13 @@ html[data-theme="dark"] .medical-input-wrap { background: #1f1b13; }
 .mc-params article { min-width: 0; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
 .mc-params span { display: block; color: var(--muted); font-size: 9px; }
 .mc-params strong { display: block; margin-top: 4px; overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mc-kpis { grid-template-columns: repeat(4, 1fr); }
 .mc-kpis article:nth-child(2) > strong, .mc-kpis article:nth-child(3) > strong, .mc-kpis article:nth-child(4) > strong { color: var(--teal); }
 .mc-kpis.good article:first-child > strong { color: var(--teal); }
 .mc-kpis.warn article:first-child > strong { color: var(--red); }
-.mc-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
-.mc-columns > div { min-width: 0; }
-.mc-hist-wrap { min-height: 180px; margin-top: 0; }
+.mc-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; margin-top: 16px; }
+.mc-columns > div { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.mc-hist-wrap { height: 170px; min-height: 170px; margin-top: 0; }
 .mc-conservation { margin-top: 14px; padding: 10px 13px; border-radius: 9px; color: var(--muted); background: var(--surface-soft); font-size: 9px; line-height: 1.7; }
 .mc-conservation.ok { color: var(--teal); background: var(--teal-soft); }
 .mc-conservation.bad { color: var(--red); background: #f7e7e2; }
@@ -478,6 +479,7 @@ html[data-theme="dark"] .toast { color: var(--ink); background: #e5d5ad; }
   .reserve-layout { grid-template-columns: 1fr; }
   .fund-controls { grid-template-columns: repeat(2, 1fr); }
   .mc-params { grid-template-columns: repeat(2, 1fr); }
+  .mc-kpis { grid-template-columns: repeat(2, 1fr); }
   .mc-columns { grid-template-columns: 1fr; }
 }
 
@@ -530,6 +532,7 @@ html[data-theme="dark"] .toast { color: var(--ink); background: #e5d5ad; }
   .medical-tiers { grid-template-columns: 1fr 1fr; }
   .fund-controls { grid-template-columns: 1fr 1fr; gap: 8px; }
   .fund-results { grid-template-columns: 1fr; }
+  .mc-kpis { grid-template-columns: 1fr; }
   .target-block-top { flex-direction: row; }
   .method-grid { grid-template-columns: 1fr; gap: 0; }
   .method-note { flex-direction: column; gap: 5px; }
