@@ -3,7 +3,9 @@
 // 蒙特卡洛风险模拟：在用户当前收益中枢上叠加年度波动，复用正式站现金流引擎逐路径计算。
 // 输入参数与输出口径均在本地计算，不接入外部数据；固定种子保证同一方案可完全复现。
 
-import { simulateCustomProjection } from "./fire-engine.js?v=20261119c";
+import {
+  simulateCustomProjection, reserveInterestForPrincipal, calculateFirePlan
+} from "./fire-engine.js?v=20261119d";
 
 export const MC_ENGINE_VERSION = "monte-carlo.1.0.0";
 
@@ -75,6 +77,18 @@ function clamp(value, min, max, fallback) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(max, Math.max(min, numeric));
+}
+
+// 储备利息必须与实际起算本金同源：即使调用方显式传入 startingPrincipal，
+// 也不会误用另一个口径下算出的旧利息。
+function reserveInterestForStartingPrincipal(fireResult, principal) {
+  const reserveRate = Number(fireResult.reserveRate ?? Number(fireResult.assumptions?.reserveReturnRate) / 100);
+  const medicalReserve = Number(fireResult.medicalReserve ?? fireResult.assumptions?.medicalReserve);
+  const cashReserve = Number(fireResult.cashReserve ?? fireResult.assumptions?.cashReserve);
+  if (Number.isFinite(reserveRate) && Number.isFinite(medicalReserve) && Number.isFinite(cashReserve)) {
+    return reserveInterestForPrincipal(principal, medicalReserve, cashReserve, reserveRate);
+  }
+  return Number(fireResult.activeReserveInterest ?? fireResult.reservePlan?.annualReserveInterest) || 0;
 }
 
 // mulberry32：确定性 PRNG，相同种子生成完全相同的路径。
@@ -149,7 +163,7 @@ export function runMonteCarlo({
   const sigma = clamp(sigmaPercent, 0, 100, profile.sigma) / 100;
   const principal = clamp(startingPrincipal ?? fireResult.chartStart ?? fireInput.principal ?? 0, 0, 1e12, 0);
   const inflation = Number(fireResult.inflation) || 0;
-  const annualReserveInterest = Number(fireResult.reservePlan?.annualReserveInterest) || 0;
+  const annualReserveInterest = reserveInterestForStartingPrincipal(fireResult, principal);
   const dividendIncomeByYear = fireResult.dividendPlan?.enabled
     ? fireResult.dividendPlan.dividendIncomeByYear
     : new Array(years + 1).fill(0);
@@ -270,7 +284,8 @@ export function computeRequiredPrincipalDistribution({
   const sigmaLog = sigma > 0 ? Math.log(1 + sigma) : 0;
   const muLog = Math.log(1 + mu);
   const inflation = Number(fireResult.inflation) || 0;
-  const annualReserveInterest = Number(fireResult.reservePlan?.annualReserveInterest) || 0;
+  // 胜率反推是在求「候选本金」，因此储备利息也必须按该候选本金同步计算。
+  const reserveInterestFor = (candidate) => reserveInterestForStartingPrincipal(fireResult, candidate);
   const dividendIncomeByYear = fireResult.dividendPlan?.enabled
     ? fireResult.dividendPlan.dividendIncomeByYear
     : new Array(years + 1).fill(0);
@@ -289,7 +304,7 @@ export function computeRequiredPrincipalDistribution({
     const isEnough = (principal) => {
       const simulation = simulateCustomProjection({
         principal, annualExpense, annualReturn: mu, inflation, years,
-        annualReserveInterest, dividendIncomeByYear, returnPath,
+        annualReserveInterest: reserveInterestFor(principal), dividendIncomeByYear, returnPath,
         expenseFlexibility, flexibilityDrawdown, flexibilityCut
       });
       const shortfall = simulation.points.some((point) => (
@@ -374,6 +389,28 @@ export function analyzeSuccessLevers({
     levers.push({ label: `推迟 ${delay} 年 FIRE`, detail: `继续定投后本金约 ${formatPlain(grown)}`, successRate: mc.successRate });
   }
 
+  // 页面「红利低波退休金」：按当前定投参数单独算出的领取现金流，作为额外年度抵扣。
+  const dividendEnabledInBaseline = Boolean(fireResult.dividendPlan?.enabled);
+  const dividendResult = calculateFirePlan({ ...fireInput, dividendEnabled: true });
+  const dividendPlan = dividendResult.dividendPlan;
+  if (dividendPlan?.enabled && dividendPlan.startYear !== null) {
+    const mc = runMonteCarlo({
+      ...common,
+      fireResult: { ...fireResult, dividendPlan }
+    });
+    levers.push({
+      label: "计入页面红利退休金",
+      detail: `FIRE 第 ${dividendPlan.startYear} 年起 ${formatPlain(dividendPlan.annualIncome)}/年`,
+      successRate: mc.successRate
+    });
+  } else {
+    levers.push({
+      label: "计入页面红利退休金",
+      detail: "当前定投参数无法产生领取金额",
+      successRate: baseline.successRate
+    });
+  }
+
   const profiles = Object.keys(MC_PROFILES).map((key) => ({
     key,
     label: MC_PROFILES[key].label,
@@ -386,6 +423,8 @@ export function analyzeSuccessLevers({
     currentPrincipal: startingPrincipal,
     gap: targetPrincipal - startingPrincipal,
     baselineSuccessRate: baseline.successRate,
+    dividendEnabledInBaseline,
+    dividendPlan,
     required,
     levers,
     profiles

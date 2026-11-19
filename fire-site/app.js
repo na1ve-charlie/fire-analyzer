@@ -1,10 +1,10 @@
 "use strict";
 
-import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261119c";
-import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261119c";
-import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261119c";
-import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261119c";
-import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js?v=20261119c";
+import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261119d";
+import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261119d";
+import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261119d";
+import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261119d";
+import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js?v=20261119d";
 
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
@@ -274,11 +274,12 @@ function updateAll() {
   setText("lastYearExpense", formatMoney(finalPoint.expense));
   setText("totalWithdrawals", formatMoney(projection.totalWithdrawals));
   setText("chartSubtitle", state.scenario === "endowment"
-    ? (isTargetCurve ? "反推目标路径：仅提取收益，本金随通胀保值" : "按你的初始目标测算：购买力是否能够保持")
-    : (isTargetCurve ? "反推目标路径：本金随支出逐步消耗，期末归零" : "按你的初始目标测算：本金够不够花"), false);
-  setText("curveSourceNote", isTargetCurve
-    ? `按${state.scenario === "endowment" ? "金鹅永续" : "细水长流"}反推目标 ${formatMoney(result.reverse)} 起算`
-    : `按我的本金 ${formatMoney(state.principal)} 起算`, false);
+    ? (isTargetCurve ? "反推目标口径：仅提取收益，本金随通胀保值" : "我的本金口径：购买力是否能够保持")
+    : (isTargetCurve ? "反推目标口径：本金随支出逐步消耗，期末归零" : "我的本金口径：本金够不够花"), false);
+  setText("curveSourceNote", state.curveSource === "target"
+    ? `全盘按${state.scenario === "endowment" ? "金鹅永续" : "细水长流"}反推 ${formatMoney(result.reverse)} 起算 · 手动本金仅作对照`
+    : `全盘按我的本金 ${formatMoney(state.principal)} 起算 · 反推值仍作对照`, false);
+  setText("activePrincipalNote", `当前全盘起算本金：${formatMoney(result.activePrincipal)}　·　对应 1.1 倍完整目标：${formatMoney(result.activeFullTarget)}`, false);
 
   const status = $("sustainStatus");
   if (state.scenario === "endowment") {
@@ -360,7 +361,7 @@ function updateAll() {
   const reservePlan = result.reservePlan;
   if (reservePlan) {
     setText("reserveModeBadge", state.scenario === "endowment" ? "金鹅永续口径" : "细水长流口径", false);
-    $("reserveTargetText").innerHTML = `达到当前模式投资本金 <strong>${formatMoney(result.reverse)}</strong> 后，还需单独准备 <strong>${formatMoney(reservePlan.target)}</strong> 补充储备；FIRE 后医疗储备与 10% 安全垫每年产生利息 <strong>${formatMoney(reservePlan.annualReserveInterest)}</strong>，用于抵扣当年支出。`;
+    $("reserveTargetText").innerHTML = `按当前口径的起算本金 <strong>${formatMoney(result.activePrincipal)}</strong>，还需单独准备 <strong>${formatMoney(reservePlan.target)}</strong> 补充储备以凑齐 1.1 倍完整目标；FIRE 后医疗储备与 10% 安全垫每年产生利息 <strong>${formatMoney(reservePlan.annualReserveInterest)}</strong>，用于抵扣当年支出。`;
     setText("reserveMedical", formatMoney(reservePlan.medicalReserve));
     setText("reserveCash", formatMoney(reservePlan.cashReserve));
     setText("reserveSafetyPad", formatMoney(reservePlan.safetyPad));
@@ -824,10 +825,13 @@ function renderMonteCarlo(result) {
   });
 
   setText("mcBadge", `${mc.runs.toLocaleString("zh-CN")} 次模拟 · ${mc.profile.label}`, false);
-  const leadByCurve = `起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`;
+  const dividendTag = state.dividendEnabled
+    ? "已计入页面红利退休金；"
+    : "未计入页面红利退休金（红利面板当前 Disable）；";
+  const leadByCurve = `全盘口径起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`;
   setText("mcLead", mc.holdings
-    ? `按近 10 年回测校准：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}；历史组合 CAGR ${formatPercent(mc.profile.backtest.cagr)}、最大回撤 ${formatPercent(mc.profile.backtest.maxDrawdown)}、夏普 ${mc.profile.backtest.sharpe.toFixed(2)}。${leadByCurve}`
-    : `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${leadByCurve}`, false);
+    ? `按近 10 年回测校准：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}；历史组合 CAGR ${formatPercent(mc.profile.backtest.cagr)}、最大回撤 ${formatPercent(mc.profile.backtest.maxDrawdown)}、夏普 ${mc.profile.backtest.sharpe.toFixed(2)}。${dividendTag}${leadByCurve}`
+    : `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${dividendTag}${leadByCurve}`, false);
 
   const holdingsWrap = $("mcHoldings");
   if (mc.holdings) {
@@ -979,6 +983,21 @@ function syncCurveSourceButtons() {
   });
 }
 
+// 全盘口径切换：现金流曲线、储备计划、蒙特卡洛与杠杆分析全部重算。
+function setCurveSource(source) {
+  if (state.curveSource === source) return;
+  state.curveSource = source;
+  syncCurveSourceButtons();
+  updateAll();
+  showToast(source === "target" ? "已切换为反推目标口径" : "已切换为我的本金口径");
+}
+
+// 手动修改本金时自动切到「我的本金」，否则页面会继续按反推目标计算，输入看起来没生效。
+function applyPrincipalChange() {
+  if (state.curveSource !== "principal") setCurveSource("principal");
+  else updateAll();
+}
+
 function syncMedicalControls() {
   document.querySelectorAll("[data-medical-tier]").forEach((button) => {
     const active = Number(button.dataset.medicalTier) === state.medicalReserve;
@@ -1111,7 +1130,8 @@ function downloadCsv() {
     ["测算参数", "数值"],
     ["计算引擎版本", latestResult.engineVersion],
     ["现金流模式", state.scenario === "endowment" ? "金鹅永续（只取收益）" : "细水长流（本金慢慢花）"],
-    ["曲线起点", state.curveSource === "target" ? "当前模式反推目标" : "我的本金"],
+    ["全盘测算口径", state.curveSource === "target" ? "当前模式反推目标（手动本金仅作对照）" : "我的本金（反推值仅作对照）"],
+    ["实际起算本金", latestResult.activePrincipal],
     ["年化收益率", `${state.returnRate}%`],
     ["年通胀率", `${state.inflationRate}%`],
     ["测算年限", `${state.years}年`],
@@ -1143,7 +1163,7 @@ buildExpenseControls();
 bindPair("returnRate", "returnInput", "returnRate");
 bindPair("inflationRate", "inflationInput", "inflationRate");
 bindPair("forecastYears", "yearsInput", "years");
-bindPair("principalRange", "principalInput", "principal");
+bindPair("principalRange", "principalInput", "principal", applyPrincipalChange);
 
 $("resetExpenses").addEventListener("click", () => {
   state.expenses = cloneExpenses();
@@ -1177,11 +1197,7 @@ document.querySelectorAll(".scenario-option").forEach((button) => {
   });
 });
 document.querySelectorAll("[data-curve-source]").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.curveSource = button.dataset.curveSource;
-    syncCurveSourceButtons();
-    updateAll();
-  });
+  button.addEventListener("click", () => setCurveSource(button.dataset.curveSource));
 });
 
 const sideIncomeInput = $("sideIncome");
@@ -1326,16 +1342,21 @@ $("runLeverAnalysis").addEventListener("click", () => runLeverAnalysis());
 
 document.querySelectorAll("[data-amount]").forEach((button) => {
   button.addEventListener("click", () => {
-    const amount = button.dataset.amount === "reverse" ? (latestResult.reverse === null ? null : Math.ceil(latestResult.reverse)) : Number(button.dataset.amount);
-    if (amount === null) {
-      showToast("当前收益未跑赢通胀，暂无永续反推值");
-      return;
-    }
+    const useReverse = button.dataset.amount === "reverse";
+    const amount = useReverse
+      ? (latestResult?.reverse === null || latestResult?.reverse === undefined ? null : Math.ceil(latestResult.reverse))
+      : Number(button.dataset.amount);
+    if (amount === null || !Number.isFinite(amount)) return;
     state.principal = amount;
     $("principalInput").value = amount;
     $("principalRange").value = Math.min(Number($("principalRange").max), amount);
     updateRangeFill($("principalRange"));
-    updateAll();
+    // 快捷金额属于手动设定：立即切到「我的本金」；点「反推值」则回到对照口径。
+    if (state.curveSource !== (useReverse ? "target" : "principal")) {
+      setCurveSource(useReverse ? "target" : "principal");
+    } else {
+      updateAll();
+    }
   });
 });
 

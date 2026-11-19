@@ -158,6 +158,19 @@ test("我的组合预设使用组合自身中枢而非全局收益率", () => {
   assert.equal(result.holdings.length, 6);
 });
 
+test("全盘口径：手动本金变化会同步改变 MC 起点与成功率", () => {
+  const lowInput = { ...baseInput, principal: 1000000, curveSource: "principal" };
+  const highInput = { ...baseInput, principal: 4000000, curveSource: "principal" };
+  const low = calculateFirePlan(lowInput);
+  const high = calculateFirePlan(highInput);
+  const common = { profileKey: "balanced", runs: 300, seed: 20261119 };
+  const lowMc = runMonteCarlo({ ...common, fireResult: low, fireInput: lowInput, startingPrincipal: low.chartStart });
+  const highMc = runMonteCarlo({ ...common, fireResult: high, fireInput: highInput, startingPrincipal: high.chartStart });
+  assert.equal(lowMc.startingPrincipal, 1000000);
+  assert.equal(highMc.startingPrincipal, 4000000);
+  assert.ok(highMc.successRate > lowMc.successRate);
+});
+
 test("反推本金分位随目标胜率单调上升", () => {
   const dist = computeRequiredPrincipalDistribution({
     fireResult: baseResult,
@@ -182,8 +195,10 @@ test("胜率工具箱输出目标本金与多种提升杠杆", () => {
   });
   assert.ok(analysis.targetPrincipal > 0);
   assert.ok(analysis.baselineSuccessRate >= 0 && analysis.baselineSuccessRate <= 1);
-  assert.equal(analysis.levers.length, 6);
+  assert.equal(analysis.levers.length, 7);
   assert.equal(analysis.profiles.length, Object.keys(MC_PROFILES).length);
   assert.ok(analysis.levers.some((item) => item.label.includes("支出降低")));
   assert.ok(analysis.levers.some((item) => item.label.includes("推迟")));
+  assert.equal(analysis.dividendEnabledInBaseline, false);
+  assert.ok(analysis.levers.some((item) => item.label === "计入页面红利退休金"));
 });
