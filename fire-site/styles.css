@@ -376,6 +376,9 @@ html[data-theme="dark"] .medical-input-wrap { background: #1f1b13; }
 .mc-params article { min-width: 0; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
 .mc-params span { display: block; color: var(--muted); font-size: 9px; }
 .mc-params strong { display: block; margin-top: 4px; overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mc-holdings { margin-top: 14px; }
+.mc-holdings .table-wrap { margin-bottom: 8px; }
+.mc-holdings + .mc-kpis { margin-top: 16px; }
 .mc-kpis { grid-template-columns: repeat(4, 1fr); }
 .mc-kpis article:nth-child(2) > strong, .mc-kpis article:nth-child(3) > strong, .mc-kpis article:nth-child(4) > strong { color: var(--teal); }
 .mc-kpis.good article:first-child > strong { color: var(--teal); }

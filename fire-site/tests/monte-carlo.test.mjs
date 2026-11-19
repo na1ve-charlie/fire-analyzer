@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateFirePlan, simulateCustomProjection } from "../js/core/fire-engine.js";
-import { runMonteCarlo, MC_PROFILES, MC_ENGINE_VERSION } from "../js/core/monte-carlo.js";
+import { runMonteCarlo, MC_PROFILES, MC_ENGINE_VERSION, computePortfolioStats } from "../js/core/monte-carlo.js";
 
 const baseInput = {
   scenario: "drawdown",
@@ -128,4 +128,27 @@ test("现金流入口在支出被削减时仍保持守恒", () => {
   }));
   assert.ok(maxError < 0.01);
   assert.ok(result.points.some((point) => point.flexApplied));
+});
+
+test("我的组合持仓权重与截图一致", () => {
+  const holdings = MC_PROFILES.myPortfolio.holdings;
+  assert.equal(holdings.reduce((sum, item) => sum + item.weight, 0), 100);
+  assert.deepEqual(holdings.map((item) => item.weight), [42, 18, 4.5, 4.5, 21, 10]);
+  const micro = holdings.find((item) => item.name === "量化微盘");
+  assert.ok(micro.fund.includes("华夏新锦绣"));
+});
+
+test("组合收益与波动按权重和相关性计算", () => {
+  const stats = computePortfolioStats(MC_PROFILES.myPortfolio.holdings);
+  assert.ok(Math.abs(stats.mu - 0.056625) < 1e-6);
+  assert.ok(stats.sigma > 0.08 && stats.sigma < 0.16);
+});
+
+test("我的组合预设使用组合自身中枢而非全局收益率", () => {
+  const result = simulate({ profileKey: "myPortfolio" });
+  assert.equal(result.profileKey, "myPortfolio");
+  assert.notEqual(result.mu, baseInput.returnRate / 100);
+  assert.ok(Math.abs(result.mu - result.portfolioStats.mu) < 1e-9);
+  assert.ok(Math.abs(result.sigma - result.portfolioStats.sigma) < 1e-9);
+  assert.equal(result.holdings.length, 6);
 });

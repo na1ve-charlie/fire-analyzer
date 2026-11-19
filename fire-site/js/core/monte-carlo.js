@@ -3,17 +3,65 @@
 // 蒙特卡洛风险模拟：在用户当前收益中枢上叠加年度波动，复用正式站现金流引擎逐路径计算。
 // 输入参数与输出口径均在本地计算，不接入外部数据；固定种子保证同一方案可完全复现。
 
-import { simulateCustomProjection } from "./fire-engine.js";
+import { simulateCustomProjection } from "./fire-engine.js?v=20261119c";
 
 export const MC_ENGINE_VERSION = "monte-carlo.1.0.0";
 
-// sigma 为年度算术波动率的示意值；mu 始终取当前方案的年化收益率中枢。
+// sigma 为年度算术波动率的示意值；通用预设的 mu 取当前方案的年化收益率中枢。
+// “我的组合”按用户实际持仓权重与示意收益/波动假设自行计算 mu 与 sigma。
 export const MC_PROFILES = {
+  myPortfolio: {
+    label: "我的组合",
+    sigma: 11,
+    note: "按实际持仓权重测算",
+    holdings: [
+      { name: "红利低波", fund: "D红利低波", group: "cnDividend", weight: 42, mu: 5.5, sigma: 16 },
+      { name: "红利低波-波段", fund: "D红利低波", group: "cnDividend", weight: 18, mu: 5.5, sigma: 12 },
+      { name: "量化微盘", fund: "华夏新锦绣混合（002833/002834）", group: "cnMicro", weight: 4.5, mu: 8, sigma: 28 },
+      { name: "纳斯达克100", fund: "W美股指数", group: "usEquity", weight: 4.5, mu: 8.5, sigma: 22 },
+      { name: "标普500", fund: "W美股指数", group: "usEquity", weight: 21, mu: 7, sigma: 16 },
+      { name: "现金", fund: "C现金", group: "cash", weight: 10, mu: 1.5, sigma: 0.5 }
+    ]
+  },
   balanced: { label: "股债 50/50", sigma: 9, note: "中等波动" },
   equity70: { label: "股 70% / 债 30%", sigma: 14, note: "偏高波动" },
   equity100: { label: "100% 宽基股票", sigma: 22, note: "高波动" },
   dividend: { label: "红利低波为主", sigma: 16, note: "权益波动" }
 };
+
+function correlation(groupA, groupB) {
+  if (groupA === groupB) {
+    if (groupA === "cash") return 1;
+    if (groupA === "cnDividend") return 0.9;
+    if (groupA === "usEquity") return 0.85;
+    return 1;
+  }
+  const pair = [groupA, groupB].sort().join("|");
+  if (pair === "cnDividend|cnMicro") return 0.6;
+  if (pair === "cnDividend|usEquity") return 0.25;
+  if (pair === "cnMicro|usEquity") return 0.3;
+  return 0; // 现金与其他资产按低相关处理
+}
+
+// 按权重与组别相关性计算组合年化收益中枢和波动率（均为十进制）。
+export function computePortfolioStats(holdings) {
+  if (!Array.isArray(holdings) || holdings.length === 0) return null;
+  const totalWeight = holdings.reduce((sum, item) => sum + Number(item.weight), 0) || 100;
+  const normalized = holdings.map((item) => ({
+    ...item,
+    w: Number(item.weight) / totalWeight,
+    muDecimal: Number(item.mu) / 100,
+    sigmaDecimal: Number(item.sigma) / 100
+  }));
+  const mu = normalized.reduce((sum, item) => sum + item.w * item.muDecimal, 0);
+  let variance = 0;
+  for (const a of normalized) {
+    for (const b of normalized) {
+      variance += a.w * b.w * a.sigmaDecimal * b.sigmaDecimal * correlation(a.group, b.group);
+    }
+  }
+  return { mu, sigma: Math.sqrt(variance), totalWeight };
+}
 
 function clamp(value, min, max, fallback) {
   const numeric = Number(value);
@@ -81,11 +129,16 @@ export function runMonteCarlo({
   }
 
   const profile = MC_PROFILES[profileKey] ? MC_PROFILES[profileKey] : MC_PROFILES.balanced;
+  const portfolioStats = profile.holdings ? computePortfolioStats(profile.holdings) : null;
   const runCount = Math.round(clamp(runs, 100, 20000, 5000));
   const randomSeed = Math.floor(clamp(seed, 0, 2147483647, 20261119));
   const years = Math.round(clamp(fireInput.years ?? fireResult.assumptions.years, 1, 80, 50));
-  const mu = clamp((fireInput.returnRate ?? fireResult.assumptions.returnRate) / 100, -0.99, 1, 0.05);
-  const sigma = clamp(sigmaOverride ?? profile.sigma, 0, 100, profile.sigma) / 100;
+  const inputMu = clamp((fireInput.returnRate ?? fireResult.assumptions.returnRate) / 100, -0.99, 1, 0.05);
+  const mu = portfolioStats ? portfolioStats.mu : inputMu;
+  const sigmaPercent = sigmaOverride !== null && sigmaOverride !== undefined
+    ? Number(sigmaOverride)
+    : (portfolioStats ? portfolioStats.sigma * 100 : profile.sigma);
+  const sigma = clamp(sigmaPercent, 0, 100, profile.sigma) / 100;
   const principal = clamp(startingPrincipal ?? fireResult.chartStart ?? fireInput.principal ?? 0, 0, 1e12, 0);
   const inflation = Number(fireResult.inflation) || 0;
   const annualReserveInterest = Number(fireResult.reservePlan?.annualReserveInterest) || 0;
@@ -156,6 +209,8 @@ export function runMonteCarlo({
     seed: randomSeed,
     profileKey: MC_PROFILES[profileKey] ? profileKey : "balanced",
     profile,
+    holdings: profile.holdings || null,
+    portfolioStats,
     years,
     mu,
     sigma,

@@ -1,10 +1,10 @@
 "use strict";
 
-import { calculateFirePlan } from "./js/core/fire-engine.js";
-import { evaluateRiskRules } from "./js/core/risk-engine.js";
-import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js";
-import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js";
-import { runMonteCarlo, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js";
+import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261119c";
+import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261119c";
+import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261119c";
+import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261119c";
+import { runMonteCarlo, MC_ENGINE_VERSION } from "./js/core/monte-carlo.js?v=20261119c";
 
 const DEFAULT_EXPENSES = [
   { id: "property", name: "物业费", icon: "物", amount: 300, max: 2000, color: "#8a6a26", bg: "#f3e9d1" },
@@ -33,7 +33,7 @@ const DEFAULT_STATE = {
   dividendYield: 4,
   dividendEnabled: false,
   dividendMode: "dividendOnly",
-  mcProfile: "balanced",
+  mcProfile: "myPortfolio",
   mcRuns: 5000,
   mcFlexibility: false
 };
@@ -50,6 +50,7 @@ let toastTimer = null;
 let resizeFrame = null;
 let mcTimer = null;
 let mcSequence = 0;
+let mcInitialized = false;
 const $ = (id) => document.getElementById(id);
 const moneyFormatter = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 
@@ -484,7 +485,13 @@ function updateAll() {
   `).join("");
 
   renderChart(projection.points, result.chartStart, result);
-  scheduleMonteCarlo();
+  // 首次加载同步渲染，避免页面打开瞬间模拟卡片空白；后续参数变动再防抖。
+  if (!mcInitialized) {
+    mcInitialized = true;
+    renderMonteCarlo(result);
+  } else {
+    scheduleMonteCarlo();
+  }
 }
 
 function formatEvidenceValue(value, unit) {
@@ -814,7 +821,28 @@ function renderMonteCarlo(result) {
   });
 
   setText("mcBadge", `${mc.runs.toLocaleString("zh-CN")} 次模拟 · ${mc.profile.label}`, false);
-  setText("mcLead", `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径；起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`, false);
+  const leadByCurve = `起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`;
+  setText("mcLead", mc.holdings
+    ? `按你的实际持仓权重测算：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}（由 6 项持仓及组别相关性估算）。${leadByCurve}`
+    : `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${leadByCurve}`, false);
+
+  const holdingsWrap = $("mcHoldings");
+  if (mc.holdings) {
+    holdingsWrap.hidden = false;
+    $("mcHoldingsTable").innerHTML = `
+      <thead><tr><th>持仓</th><th>标的 / 基金</th><th>权重</th><th>示意年化</th><th>示意波动</th></tr></thead>
+      <tbody>${mc.holdings.map((item) => `
+        <tr>
+          <td>${item.name}</td>
+          <td>${item.fund}</td>
+          <td>${item.weight.toFixed(1)}%</td>
+          <td>${formatPercent(item.mu)}</td>
+          <td>${formatPercent(item.sigma)}</td>
+        </tr>`).join("")}</tbody>`;
+  } else {
+    holdingsWrap.hidden = true;
+    $("mcHoldingsTable").innerHTML = "";
+  }
 
   $("mcParams").innerHTML = [
     ["收益中枢 μ", formatPercent(mc.mu * 100)],
