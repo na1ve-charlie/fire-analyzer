@@ -34,7 +34,7 @@ const DEFAULT_STATE = {
   dividendYield: 4,
   dividendEnabled: false,
   dividendMode: "dividendOnly",
-  mcProfile: "portfolioA",
+  mcProfile: "balanced",
   mcRuns: 5000,
   mcFlexibility: false,
   mcTargetRate: 0.9,
@@ -50,7 +50,8 @@ const MC_RUNS_MAX = 20000;
 const MC_RUNS_PRESETS = [2000, 5000, 10000];
 // 页面自定义组合的存储键与内置组合持仓说明（须在 state 初始化前声明，loadCustomProfiles 顶层即被调用）。
 const CUSTOM_PROFILES_STORAGE_KEY = "fire-mc-custom-profiles";
-const BUILTIN_HOLDINGS_NOTE = "组合一为 2007-01-04～2026-11-09 长样本回测；组合二三列指数版（5–7 年基线 / 10 年 / 30 年）同为 2011-01-04～2026-11-09 样本；组合二两列 ETF 版（10 年 / 30 年）受 ETF 上市日限制同为 2023-06-13～2026-11-09 短样本。指数版与 ETF 版样本不同，胜率不可直接横比；所有版本均以人民币计价、月末再平衡，ETF 使用单位净值并计入分红再投资；微盘序列全收益口径依据第三方页面标注，待 Wind 原始数据核验。回测不代表未来，非市场预测或投资建议。";
+// 自定义组合持仓表的说明文案（非自定义组合不展示持仓表）。
+const CUSTOM_HOLDINGS_NOTE = "持仓权重仅作展示，模拟按组合级参数（年化收益 + 年化波动率）进行；权重按填写值显示，未强制合计 100%。";
 
 const state = {
   expenses: cloneExpenses(),
@@ -655,11 +656,8 @@ function applySnapshotPayload(payload) {
   if (Array.isArray(snapshotState.mcCustomProfiles)) {
     state.mcCustomProfiles = snapshotState.mcCustomProfiles.filter((item) => item && item.key && item.label);
     saveCustomProfiles();
+    ensureActiveProfile();
     renderCustomProfileButtons();
-  }
-  if (String(state.mcProfile).startsWith("custom-")
-    && !state.mcCustomProfiles.some((profile) => profile.key === state.mcProfile)) {
-    state.mcProfile = "portfolioA";
   }
   buildExpenseControls();
   syncControls();
@@ -1208,8 +1206,8 @@ function renderStressKpis(scenario) {
   kpis.className = `stress-kpis ${levelClass}`;
   kpis.innerHTML = `
     <article><span>危机期组合回撤</span><strong>${formatPercent(scenario.crisisReturn * 100)}</strong><p>${scenario.crisisYears} 年冲击段的纯市场跌幅</p></article>
-    <article><span>路径最深回撤</span><strong>${formatPercent(alerts.maxDrawdown * 100)}</strong><p>含提取消耗的资产峰值回撤</p></article>
-    <article><span>${scenario.years} 年后剩余资产</span><strong>${formatMoney(scenario.endBalance)}</strong><p>名义金额${scenario.isEndowment ? " · 永续口径要求购买力不减" : ""}</p></article>
+    <article><span>耗尽前最深回撤</span><strong>${formatPercent(alerts.maxDrawdown * 100)}</strong><p>资产仍在增长时的最大跌幅（不含耗尽后归零）</p></article>
+    <article><span>${scenario.years} 年后剩余资产</span><strong>${formatMoney(scenario.endBalance)}</strong><p>${scenario.depletionYear !== null ? `第 ${scenario.depletionYear} 年已耗尽` : "名义金额" + (scenario.isEndowment ? " · 永续口径要求购买力不减" : "")}</p></article>
     <article><span>危机提取占比</span><strong>${formatPercent((scenario.startingPrincipal > 0 ? scenario.totalWithdrawals / scenario.startingPrincipal : 0) * 100)}</strong><p>期内累计提取 ÷ 起点本金</p></article>`;
 }
 
@@ -1245,17 +1243,30 @@ function renderStressBuckets(scenario) {
 }
 
 function renderStressTable(comparison) {
+  const baselineDepletion = comparison.baseline.depletionYear;
   $("stressTable").innerHTML = `
-    <thead><tr><th>场景</th><th>危机回撤</th><th>撑到</th><th>期末资产</th><th>最深回撤</th></tr></thead>
+    <thead><tr><th>场景</th><th>危机期回撤</th><th>撑到</th><th>比基线早耗尽</th><th>预警等级</th></tr></thead>
     <tbody>${comparison.scenarios.map((item) => {
       const isWorst = comparison.worst && item.scenarioId === comparison.worst.scenarioId;
       const isBaseline = item.scenarioId === "baseline";
+      // 比基线早耗尽：基线自身不显示；未耗尽场景显示「未耗尽」。
+      let earlierText = "—";
+      if (!isBaseline) {
+        if (item.depletionYear === null) earlierText = "未耗尽";
+        else if (baselineDepletion === null) earlierText = "基线未耗尽";
+        else earlierText = `${baselineDepletion - item.depletionYear} 年`;
+      } else {
+        earlierText = "—";
+      }
+      const levelLabel = item.scenarioId === "baseline"
+        ? "—"
+        : item.alerts.level === "critical" ? "红色" : item.alerts.level === "warning" ? "黄色" : "安全";
       return `<tr class="${isWorst ? "worst-row" : ""}${isBaseline ? " baseline-row" : ""}">
         <td>${item.scenario.label}</td>
         <td>${item.scenarioId === "baseline" ? "—" : formatPercent(item.crisisReturn * 100)}</td>
         <td>${formatStressSurvival(item, item.years)}</td>
-        <td>${formatMoney(item.endBalance)}</td>
-        <td>${formatPercent(item.alerts.maxDrawdown * 100)}</td>
+        <td>${earlierText}</td>
+        <td>${levelLabel}</td>
       </tr>`;
     }).join("")}</tbody>`;
 }
@@ -1449,7 +1460,8 @@ function renderFailureAttribution(mc) {
 }
 
 // ===== 页面自定义组合：存 localStorage、随方案快照导出，新增组合无需改代码 =====
-// （CUSTOM_PROFILES_STORAGE_KEY 与 BUILTIN_HOLDINGS_NOTE 声明在文件顶部，避免 TDZ）
+// （CUSTOM_PROFILES_STORAGE_KEY 声明在文件顶部，避免 TDZ）
+let editingCpKey = null; // 非 null 表示弹窗正在编辑已有组合
 
 function loadCustomProfiles() {
   try {
@@ -1472,8 +1484,22 @@ function customProfileMap() {
   return Object.fromEntries(state.mcCustomProfiles.map((profile) => [profile.key, profile]));
 }
 
+// 选中口径兜底：当前 profile 是有效自定义组合则保持，否则选第一个自定义组合；一个都没有时回退通用示意（股债 50/50）。
+function ensureActiveProfile() {
+  const isCustom = String(state.mcProfile).startsWith("custom-")
+    && state.mcCustomProfiles.some((profile) => profile.key === state.mcProfile);
+  if (!isCustom) {
+    state.mcProfile = state.mcCustomProfiles.length > 0 ? state.mcCustomProfiles[0].key : "balanced";
+  }
+}
+
 // 组装自定义组合 profile：calibrated 口径，模拟只用 cagr 与 volatility，其余字段仅展示。
-function buildCustomProfile({ key, name, cagr, volatility, maxDrawdown, sharpe, period, holdings }) {
+// 卡玛比率与最大回撤二选一：只填卡玛时按 MDD = −CAGR ÷ 卡玛 反推。
+function buildCustomProfile({ key, name, cagr, volatility, maxDrawdown, calmar, sharpe, period, holdings }) {
+  let mdd = Number.isFinite(maxDrawdown) ? maxDrawdown : null;
+  if (mdd === null && Number.isFinite(calmar) && calmar > 0) {
+    mdd = -Math.min(100, Math.max(0.01, cagr / calmar));
+  }
   const profile = {
     key,
     label: name,
@@ -1483,7 +1509,7 @@ function buildCustomProfile({ key, name, cagr, volatility, maxDrawdown, sharpe, 
     sigma: volatility,
     backtest: { period: period || "自定义参数", cagr, volatility }
   };
-  if (Number.isFinite(maxDrawdown)) profile.backtest.maxDrawdown = maxDrawdown;
+  if (mdd !== null) profile.backtest.maxDrawdown = mdd;
   if (Number.isFinite(sharpe)) profile.backtest.sharpe = sharpe;
   const rows = (Array.isArray(holdings) ? holdings : [])
     .map((row) => ({ name: row.name, fund: row.fund || "自定义持仓", group: "custom", weight: row.weight }))
@@ -1496,13 +1522,23 @@ function renderCustomProfileButtons() {
   const wrap = $("mcCustomProfileButtons");
   if (!wrap) return;
   wrap.innerHTML = state.mcCustomProfiles.map((profile) => `
-    <button type="button" data-mc-profile="${profile.key}" title="自定义组合：${profile.label}">${profile.label}</button>`).join("");
+    <span class="mc-custom-chip">
+      <button type="button" data-mc-profile="${profile.key}" title="切换到 ${profile.label}">${profile.label}</button>
+      <button type="button" class="cp-chip-edit" data-cp-edit="${profile.key}" title="编辑 ${profile.label}" aria-label="编辑 ${profile.label}">✎</button>
+      <button type="button" class="cp-chip-delete" data-cp-delete="${profile.key}" title="删除 ${profile.label}" aria-label="删除 ${profile.label}">✕</button>
+    </span>`).join("");
   wrap.querySelectorAll("[data-mc-profile]").forEach((button) => {
     button.addEventListener("click", () => {
       state.mcProfile = button.dataset.mcProfile;
       syncMonteCarloControls();
       scheduleMonteCarlo();
     });
+  });
+  wrap.querySelectorAll("[data-cp-edit]").forEach((button) => {
+    button.addEventListener("click", () => openCpModal(button.dataset.cpEdit));
+  });
+  wrap.querySelectorAll("[data-cp-delete]").forEach((button) => {
+    button.addEventListener("click", () => deleteCustomProfile(button.dataset.cpDelete));
   });
   syncMonteCarloControls();
 }
@@ -1517,22 +1553,25 @@ function renderSavedProfiles() {
     return `<div class="cp-saved-row">
       <span class="cp-saved-name">${profile.label}</span>
       <span class="cp-saved-stats">CAGR ${formatPercent(backtest.cagr ?? 0)} · σ ${formatPercent(backtest.volatility ?? 0)}</span>
+      <button type="button" class="cp-saved-edit" data-cp-edit2="${profile.key}">编辑</button>
       <button type="button" class="cp-saved-delete" data-cp-delete="${profile.key}">删除</button>
     </div>`;
   }).join("");
+  list.querySelectorAll("[data-cp-edit2]").forEach((button) => {
+    button.addEventListener("click", () => openCpModal(button.dataset.cpEdit2));
+  });
 }
 
 function deleteCustomProfile(key) {
   const target = state.mcCustomProfiles.find((profile) => profile.key === key);
   if (!target) return;
+  if (!window.confirm(`确定删除自定义组合「${target.label}」？该操作不可撤销。`)) return;
   state.mcCustomProfiles = state.mcCustomProfiles.filter((profile) => profile.key !== key);
   saveCustomProfiles();
-  if (state.mcProfile === key) {
-    state.mcProfile = "portfolioA";
-    scheduleMonteCarlo();
-  }
+  ensureActiveProfile();
   renderCustomProfileButtons();
   renderSavedProfiles();
+  scheduleMonteCarlo();
   showToast(`已删除「${target.label}」`);
 }
 
@@ -1547,19 +1586,26 @@ function addCpHoldingRow(name = "", weight = "") {
   $("cpHoldingsRows").appendChild(row);
 }
 
-function openCpModal() {
-  $("cpName").value = "";
-  $("cpCagr").value = "";
-  $("cpVol").value = "";
-  $("cpMdd").value = "";
-  $("cpSharpe").value = "";
-  $("cpPeriod").value = "";
+function openCpModal(editKey = null) {
+  editingCpKey = editKey;
+  const source = editKey ? state.mcCustomProfiles.find((profile) => profile.key === editKey) : null;
+  const backtest = source?.backtest || {};
+  $("cpName").value = source?.label || "";
+  $("cpCagr").value = backtest.cagr ?? "";
+  $("cpVol").value = backtest.volatility ?? "";
+  $("cpMdd").value = backtest.maxDrawdown ?? "";
+  $("cpSharpe").value = backtest.sharpe ?? "";
+  $("cpCalmar").value = "";
+  $("cpPeriod").value = backtest.period && backtest.period !== "自定义参数" ? backtest.period : "";
   $("cpHoldingsRows").innerHTML = "";
+  (source?.holdings || []).forEach((row) => addCpHoldingRow(row.name, row.weight));
+  $("cpSave").textContent = editKey ? "保存修改" : "保存并启用";
   renderSavedProfiles();
   $("cpModalOverlay").hidden = false;
 }
 
 function closeCpModal() {
+  editingCpKey = null;
   const overlay = $("cpModalOverlay");
   if (overlay) overlay.hidden = true;
 }
@@ -1581,32 +1627,46 @@ function saveCustomProfileFromForm() {
     return;
   }
   const mddText = $("cpMdd").value.trim();
+  const calmarText = $("cpCalmar").value.trim();
   const sharpeText = $("cpSharpe").value.trim();
   const mdd = mddText !== "" ? Number(mddText) : NaN;
+  const calmar = calmarText !== "" ? Number(calmarText) : NaN;
   const sharpe = sharpeText !== "" ? Number(sharpeText) : NaN;
+  if (calmarText !== "" && (!Number.isFinite(calmar) || calmar <= 0)) {
+    showToast("卡玛比率需为正数");
+    return;
+  }
   const holdings = [...$("cpHoldingsRows").querySelectorAll(".cp-holding-row")].map((row) => ({
     name: row.querySelector(".cp-holding-name").value.trim(),
     weight: Number(row.querySelector(".cp-holding-weight").value)
   })).filter((row) => row.name && Number.isFinite(row.weight) && row.weight > 0);
-  const key = `custom-${Date.now()}`;
+  const isEdit = editingCpKey !== null && state.mcCustomProfiles.some((profile) => profile.key === editingCpKey);
+  const key = isEdit ? editingCpKey : `custom-${Date.now()}`;
   const profile = buildCustomProfile({
     key,
     name,
     cagr,
     volatility,
     maxDrawdown: Number.isFinite(mdd) ? mdd : null,
+    calmar: Number.isFinite(calmar) ? calmar : null,
     sharpe: Number.isFinite(sharpe) ? sharpe : null,
     period: $("cpPeriod").value.trim(),
     holdings
   });
-  state.mcCustomProfiles.push(profile);
+  if (isEdit) {
+    const index = state.mcCustomProfiles.findIndex((item) => item.key === key);
+    state.mcCustomProfiles[index] = profile;
+    showToast(`自定义组合「${name}」已更新`);
+  } else {
+    state.mcCustomProfiles.push(profile);
+    showToast(`自定义组合「${name}」已保存并启用`);
+  }
   saveCustomProfiles();
   renderCustomProfileButtons();
   state.mcProfile = key;
   syncMonteCarloControls();
   scheduleMonteCarlo();
   closeCpModal();
-  showToast(`自定义组合「${name}」已保存并启用`);
 }
 
 function renderMonteCarlo(result) {
@@ -1630,7 +1690,7 @@ function renderMonteCarlo(result) {
     ? "已计入页面红利退休金；"
     : "未计入页面红利退休金（红利面板当前 Disable）；";
   const leadByCurve = `全盘口径起点取${state.curveSource === "target" ? "反推目标" : "我的本金"} ${formatMoney(mc.startingPrincipal)}。固定种子 ${mc.seed}，结果可完全复现。`;
-  const genericLead = `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${dividendTag}${leadByCurve}`;
+  const genericLead = `以当前年化 ${formatPercent(state.returnRate)} 为收益中枢，按 ${mc.profile.label} 的波动率 ${formatPercent(mc.sigma * 100)} 生成 ${mc.years} 年随机路径。${state.mcCustomProfiles.length === 0 ? "尚未创建自定义组合，暂按股债 50/50（σ=9%）示意，点击「＋ 自定义组合」创建后按你的回测参数模拟。" : ""}${dividendTag}${leadByCurve}`;
   const bt = mc.profile.backtest || {};
   const periodLead = mc.profile.custom
     ? `按自定义参数校准${bt.period && bt.period !== "自定义参数" ? `（${bt.period}）` : ""}`
@@ -1640,11 +1700,9 @@ function renderMonteCarlo(result) {
   if (Number.isFinite(bt.sharpe)) histParts.push(`夏普 ${bt.sharpe.toFixed(2)}`);
   const etfHint = bt.period === MC_PROFILE_GROUPS.etfSample ? "该组合采用 ETF 上市以来短样本，与 2011 年起样本的版本不可直接横比；" : "";
   const customHint = mc.profile.custom ? "该组合参数由页面填写，模拟只用年化收益与波动率两个数字；" : "";
-  setText("mcLead", mc.holdings
-    ? (mc.profile.calibrated
-      ? `${periodLead}：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}；${histParts.join("、")}。${customHint}${etfHint}${dividendTag}${leadByCurve}`
-      : genericLead)
-    : genericLead, false);
+  // 校准组合（含未填持仓的自定义组合）都走回测参数口径文案；仅通用示意组合走 genericLead。
+  const calibratedLead = `${periodLead}：组合年化中枢 ${formatPercent(mc.mu * 100)}、年波动率 ${formatPercent(mc.sigma * 100)}；${histParts.join("、")}。${customHint}${etfHint}${dividendTag}${leadByCurve}`;
+  setText("mcLead", mc.profile.calibrated ? calibratedLead : genericLead, false);
 
   const holdingsWrap = $("mcHoldings");
   if (mc.holdings) {
@@ -1662,8 +1720,8 @@ function renderMonteCarlo(result) {
     const holdingsNote = $("mcHoldingsNote");
     if (holdingsNote) {
       holdingsNote.textContent = mc.profile.custom
-        ? "持仓权重仅作展示，模拟按上方组合级参数（年化收益 + 年化波动率）进行；权重按填写值显示，未强制合计 100%。"
-        : BUILTIN_HOLDINGS_NOTE;
+        ? CUSTOM_HOLDINGS_NOTE
+        : "当前为通用示意口径（未使用自定义组合的回测参数），持仓表仅作展示。";
     }
   } else {
     holdingsWrap.hidden = true;
@@ -2066,6 +2124,7 @@ function syncControls() {
 function resetAll() {
   state.expenses = cloneExpenses();
   Object.assign(state, DEFAULT_STATE);
+  ensureActiveProfile();
   buildExpenseControls();
   syncControls();
   updateAll();
@@ -2306,6 +2365,7 @@ document.querySelectorAll("[data-mc-profile]").forEach((button) => {
   });
 });
 // 自定义组合：初始化按钮（localStorage 已载入），并接好表单弹窗与删除逻辑。
+ensureActiveProfile();
 renderCustomProfileButtons();
 $("mcAddProfile").addEventListener("click", openCpModal);
 $("cpModalClose").addEventListener("click", closeCpModal);

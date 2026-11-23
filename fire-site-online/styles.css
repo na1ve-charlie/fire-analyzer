@@ -377,7 +377,7 @@ html[data-theme="dark"] .medical-input-wrap { background: #1f1b13; }
 .fund-scenario { margin-top: 16px; }
 .fund-scenario-title { margin-bottom: 10px; color: var(--ink-soft); font-size: 11px; font-weight: 650; }
 
-.monte-carlo-panel, .lever-panel { padding: 28px; }
+.monte-carlo-panel, .lever-panel, .stress-panel { padding: 28px; }
 .lever-hero { margin-top: 14px; }
 .best-row { color: var(--teal); font-weight: 650; }
 .lever-panel th, .lever-panel td { padding: 9px 6px; font-size: 11px; }
@@ -470,6 +470,11 @@ html[data-theme="dark"] .mc-modal { border-color: var(--line-strong); box-shadow
 
 /* 页面自定义组合：按钮容器随内置按钮同排流动，弹窗为表单样式 */
 #mcCustomProfileButtons { display: contents; }
+.mc-custom-chip { display: inline-flex; align-items: center; gap: 1px; }
+.mc-custom-chip > [data-mc-profile] { padding-right: 4px; }
+.cp-chip-edit, .cp-chip-delete { flex: 0 0 auto; width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 10px; line-height: 1; cursor: pointer; transition: color 160ms ease, background 160ms ease; }
+.cp-chip-edit:hover { color: var(--teal-dark); background: var(--surface-soft); }
+.cp-chip-delete:hover { color: var(--red); background: var(--surface-soft); }
 .mc-add-profile { padding: 7px 12px; border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: border-color 160ms ease, color 160ms ease; }
 .mc-add-profile:hover { color: var(--teal-dark); border-color: var(--teal); }
 .cp-modal-lead { margin: 0 0 14px; color: var(--muted); font-size: 10.5px; line-height: 1.7; }
@@ -494,7 +499,8 @@ html[data-theme="dark"] .mc-modal { border-color: var(--line-strong); box-shadow
 .cp-saved-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
 .cp-saved-name { font-weight: 650; font-size: 12px; }
 .cp-saved-stats { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.cp-saved-delete { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); padding: 4px 10px; font: inherit; font-size: 11px; cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
+.cp-saved-delete, .cp-saved-edit { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); padding: 4px 10px; font: inherit; font-size: 11px; cursor: pointer; transition: color 160ms ease, border-color 160ms ease; }
+.cp-saved-edit:hover { color: var(--teal-dark); border-color: var(--teal); }
 .cp-saved-delete:hover { color: var(--red); border-color: var(--red); }
 @media (max-width: 640px) {
   .cp-grid { grid-template-columns: 1fr 1fr; }

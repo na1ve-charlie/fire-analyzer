@@ -363,7 +363,8 @@ test("胜率工具箱输出目标本金与多种提升杠杆", () => {
   assert.ok(analysis.baselineSuccessRate >= 0 && analysis.baselineSuccessRate <= 1);
   // 8 个可勾选项：支出降低 / 每月额外收入 / 过渡期兼职收入 / 推迟 FIRE / 提高初始本金 / 红利退休金 / 支出弹性 / 支出弹性强化档。
   assert.equal(analysis.levers.length, 8);
-  assert.equal(analysis.profiles.length, Object.keys(MC_PROFILES).length);
+  // 内置预置已从 UI 撤下：未传自定义组合时配置对比为空。
+  assert.equal(analysis.profiles.length, 0);
   assert.ok(analysis.levers.some((item) => item.key === "expenseCut"));
   assert.ok(analysis.levers.some((item) => item.key === "delay"));
   assert.ok(analysis.levers.some((item) => item.key === "extraPrincipal"));
@@ -500,7 +501,7 @@ test("自定义组合：未知 key 回退股债 50/50", () => {
   assert.equal(mc.profile.label, MC_PROFILES.balanced.label);
 });
 
-test("胜率工具箱配置对比包含自定义组合", () => {
+test("胜率工具箱配置对比只包含自定义组合", () => {
   const customProfiles = {
     "custom-2": {
       key: "custom-2",
@@ -520,10 +521,22 @@ test("胜率工具箱配置对比包含自定义组合", () => {
     profileKey: "custom-2",
     customProfiles
   });
-  assert.equal(analysis.baselineSuccessRate, 1);
   const customRow = analysis.profiles.find((profile) => profile.key === "custom-2");
   assert.ok(customRow, "自定义组合应出现在配置对比中");
   assert.equal(customRow.label, "自定义对照");
-  const builtinRow = analysis.profiles.find((profile) => profile.key === "portfolioA");
-  assert.ok(builtinRow, "内置组合仍应出现在配置对比中");
+  assert.ok(
+    analysis.profiles.every((profile) => String(profile.key).startsWith("custom-")),
+    "内置预置已撤下，配置对比不应包含内置组合"
+  );
+  // 未传自定义组合时对比表为空（UI 显示空表，不报错）
+  const empty = analyzeSuccessLevers({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    targetRate: 0.9,
+    runs: 200,
+    startingPrincipal: baseResult.chartStart,
+    profileKey: "balanced",
+    customProfiles: null
+  });
+  assert.deepEqual(empty.profiles, []);
 });

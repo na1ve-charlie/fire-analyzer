@@ -396,7 +396,7 @@
             <div>
               <div class="fund-scenario-title">场景对比 · 危机第一年就爆发</div>
               <div class="table-wrap"><table id="stressTable"></table></div>
-              <p class="stress-table-hint">「撑到」为资产耗尽年份；「撑过」表示全程无缺口。存续判定与主现金流同口径。</p>
+              <p class="stress-table-hint">「撑到」为资产耗尽年份，「撑过」表示全程无缺口；「比基线早耗尽」衡量冲击对存续年限的净影响。预警等级按耗尽前最深回撤分级（−15% 黄 / −25% 红）。</p>
             </div>
             <div>
               <div class="fund-scenario-title">危机路径资产曲线</div>
@@ -420,16 +420,6 @@
           <p class="fund-lead" id="mcLead">在当前收益中枢上叠加年度波动，观察 50 年内有多少路径能够安全走完。</p>
           <div class="fund-toggle-row">
             <div class="fund-toggle-group" role="group" aria-label="资产配置波动率">
-              <button type="button" data-mc-profile="portfolioA" class="active">组合一 · 进攻</button>
-              <button type="button" data-mc-profile="portfolioB57">组合二 · 5–7年基线</button>
-              <button type="button" data-mc-profile="portfolioB10y">组合二 · 10年指数</button>
-              <button type="button" data-mc-profile="portfolioB30y">组合二 · 30年指数</button>
-              <button type="button" data-mc-profile="portfolioB10etf">组合二 · 10年ETF</button>
-              <button type="button" data-mc-profile="portfolioB30etf">组合二 · 30年ETF</button>
-              <button type="button" data-mc-profile="balanced">股债 50/50</button>
-              <button type="button" data-mc-profile="equity70">股 70 / 债 30</button>
-              <button type="button" data-mc-profile="equity100">100% 股票</button>
-              <button type="button" data-mc-profile="dividend">红利低波</button>
               <span id="mcCustomProfileButtons" class="mc-custom-profile-buttons"></span>
               <button type="button" id="mcAddProfile" class="mc-add-profile">＋ 自定义组合</button>
             </div>
@@ -453,7 +443,7 @@
           <div class="mc-holdings" id="mcHoldings" hidden>
             <div class="fund-scenario-title">当前组合持仓权重</div>
             <div class="table-wrap"><table id="mcHoldingsTable"></table></div>
-            <p class="fund-start-note" id="mcHoldingsNote">组合一为 2007-01-04～2026-11-09 长样本回测；组合二三列指数版（5–7 年基线 / 10 年 / 30 年）同为 2011-01-04～2026-11-09 样本；组合二两列 ETF 版（10 年 / 30 年）受 ETF 上市日限制同为 2023-06-13～2026-11-09 短样本。指数版与 ETF 版样本不同，胜率不可直接横比；所有版本均以人民币计价、月末再平衡，ETF 使用单位净值并计入分红再投资；微盘序列全收益口径依据第三方页面标注，待 Wind 原始数据核验。回测不代表未来，非市场预测或投资建议。</p>
+            <p class="fund-start-note" id="mcHoldingsNote">持仓权重仅作展示，模拟按组合级参数（年化收益 + 年化波动率）进行；权重按填写值显示，未强制合计 100%。</p>
           </div>
           <div class="fund-results mc-kpis" id="mcKpis"></div>
           <div class="mc-columns">
@@ -484,7 +474,7 @@
             <p class="mc-attr-foot" id="mcAttrFoot"></p>
           </div>
           <div class="mc-conservation" id="mcConservation"></div>
-          <p class="panel-footnote">收益路径按对数正态分布生成，年化中枢取当前「年化收益率」，波动率由资产配置预设决定；固定随机种子 20261119，结果可复现。模拟起点跟随「全盘测算口径」，但不会修改反推值与保守目标这两个对照基准。失败归因基于反事实测试：把失败路径的收益顺序、波动、支出或本金逐项调至理想值后重新判定存续，只为定位原因，不代表可以做到的市场操作。参数为示意假设，非市场预测，不构成投资建议。</p>
+          <p class="panel-footnote">收益路径按对数正态分布生成，年化中枢与波动率由所选自定义组合的参数决定；固定随机种子 20261119，结果可复现。模拟起点跟随「全盘测算口径」，但不会修改反推值与保守目标这两个对照基准。失败归因基于反事实测试：把失败路径的收益顺序、波动、支出或本金逐项调至理想值后重新判定存续，只为定位原因，不代表可以做到的市场操作。参数为示意假设，非市场预测，不构成投资建议。</p>
         </section>
 
         <section class="panel lever-panel" id="levers">
@@ -632,7 +622,7 @@
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <p class="cp-modal-lead">填入组合级回测数字即可新增组合，无需改代码：年化收益与年化波动率为必填项，直接决定模拟；其余为展示信息。若工具只给夏普没给波动率，可按 σ ≈ (CAGR − 无风险利率) ÷ 夏普 反推（无风险利率按工具口径，常见 0% 或 3%）。组合保存在本浏览器并随「导出方案 JSON」一起带走。</p>
+      <p class="cp-modal-lead">填入组合级回测数字即可新增组合，无需改代码：年化收益与年化波动率为必填项，直接决定模拟；其余为展示信息。若工具只给夏普没给波动率，可按 σ ≈ (CAGR − 无风险利率) ÷ 夏普 反推（无风险利率按工具口径，常见 0% 或 3%）；最大回撤与卡玛比率二选一，填卡玛会按 MDD = −CAGR ÷ 卡玛 反推回撤。组合保存在本浏览器并随「导出方案 JSON」一起带走。</p>
       <div class="cp-form">
         <div class="cp-grid">
           <label class="cp-field"><span>组合名称 *</span><input id="cpName" type="text" maxlength="24" placeholder="例如：我的红利增强"></label>
@@ -640,6 +630,7 @@
           <label class="cp-field"><span>年化波动率 σ % *</span><input id="cpVol" type="number" step="0.01" min="0" max="100" placeholder="例如 10.74"></label>
           <label class="cp-field"><span>最大回撤 %（选填）</span><input id="cpMdd" type="number" step="0.01" min="-100" max="0" placeholder="例如 -22.18"></label>
           <label class="cp-field"><span>夏普比率（选填）</span><input id="cpSharpe" type="number" step="0.01" min="-5" max="10" placeholder="例如 0.91"></label>
+          <label class="cp-field"><span>卡玛比率（选填）</span><input id="cpCalmar" type="number" step="0.01" min="0" max="50" placeholder="填了可反推最大回撤"></label>
           <label class="cp-field"><span>回测区间（选填）</span><input id="cpPeriod" type="text" maxlength="60" placeholder="例如 2015-01-01 ~ 2026-11-09"></label>
         </div>
         <div class="cp-holdings-block">

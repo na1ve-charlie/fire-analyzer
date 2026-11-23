@@ -938,11 +938,12 @@ export function analyzeSuccessLevers({
     };
   }
 
-  // 配置对比：内置预置与页面自定义组合一起参与；未勾选时按当前本金，勾选后按组合口径（支出与本金同步调整），保证口径一致。
+  // 配置对比：只对比页面自定义组合（内置预置已从 UI 撤下，仅作为引擎回退口径保留）。
+  // 未勾选时按当前本金，勾选后按组合口径（支出与本金同步调整），保证口径一致。
   const profileContext = hasSelection
     ? { fireResult: combinedFireResult, startingPrincipal: combinedPrincipal, expenseFlexibility: useFlex, ...flexParams, extraIncomeByYear: useBridge }
     : {};
-  const profileKeys = [...Object.keys(MC_PROFILES), ...Object.keys(customProfiles || {})];
+  const profileKeys = Object.keys(customProfiles || {});
   const profiles = profileKeys.map((key) => ({
     key,
     label: resolveProfile(key, customProfiles).profile.label,
