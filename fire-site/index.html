@@ -622,7 +622,7 @@
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <p class="cp-modal-lead">填入组合级回测数字即可新增组合，无需改代码：年化收益与年化波动率为必填项，直接决定模拟；其余为展示信息。若工具只给夏普没给波动率，可按 σ ≈ (CAGR − 无风险利率) ÷ 夏普 反推（无风险利率按工具口径，常见 0% 或 3%）；最大回撤与卡玛比率二选一，填卡玛会按 MDD = −CAGR ÷ 卡玛 反推回撤。组合保存在本浏览器并随「导出方案 JSON」一起带走。</p>
+      <p class="cp-modal-lead">填入组合级回测数字即可新增组合，无需改代码：年化收益与年化波动率为必填项，直接决定模拟；其余为展示信息。工具没给波动率时，用下方「由夏普反推 σ」按钮按 σ = (CAGR − 无风险利率) ÷ 夏普 计算；最大回撤与卡玛比率二选一，填卡玛会按 MDD = −CAGR ÷ 卡玛 反推回撤。组合保存在本浏览器并随「导出方案 JSON」一起带走。</p>
       <div class="cp-form">
         <div class="cp-grid">
           <label class="cp-field"><span>组合名称 *</span><input id="cpName" type="text" maxlength="24" placeholder="例如：我的红利增强"></label>
@@ -632,6 +632,11 @@
           <label class="cp-field"><span>夏普比率（选填）</span><input id="cpSharpe" type="number" step="0.01" min="-5" max="10" placeholder="例如 0.91"></label>
           <label class="cp-field"><span>卡玛比率（选填）</span><input id="cpCalmar" type="number" step="0.01" min="0" max="50" placeholder="填了可反推最大回撤"></label>
           <label class="cp-field"><span>回测区间（选填）</span><input id="cpPeriod" type="text" maxlength="60" placeholder="例如 2015-01-01 ~ 2026-11-09"></label>
+        </div>
+        <div class="cp-derive-row">
+          <label class="cp-field cp-derive-rf"><span>无风险利率 %（夏普口径）</span><input id="cpRf" type="number" step="0.01" min="0" max="10" placeholder="常见 0 或 3"></label>
+          <button type="button" id="cpDeriveVol" class="button button-ghost">由夏普反推 σ</button>
+          <span class="cp-derive-hint" id="cpDeriveHint">填好 CAGR 和夏普后点击，自动预填波动率</span>
         </div>
         <div class="cp-holdings-block">
           <div class="cp-block-title">持仓权重（选填，仅作展示）</div>
@@ -650,6 +655,6 @@
       <p class="panel-footnote">模拟只使用年化收益与年化波动率两个数字（对数正态年度路径），持仓表不参与计算；参数请来自你自己跑的组合级回测，非市场预测，不构成投资建议。</p>
     </div>
   </div>
-  <script type="module" src="app.js?v=20261123a"></script>
+  <script type="module" src="app.js?v=20261123b"></script>
 </body>
 </html>

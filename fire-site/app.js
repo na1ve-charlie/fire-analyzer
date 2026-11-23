@@ -1,10 +1,10 @@
 "use strict";
 
-import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261123a";
-import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261123a";
-import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261123a";
-import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261123a";
-import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION, MC_PROFILE_GROUPS } from "./js/core/monte-carlo.js?v=20261123a";
+import { calculateFirePlan } from "./js/core/fire-engine.js?v=20261123b";
+import { evaluateRiskRules } from "./js/core/risk-engine.js?v=20261123b";
+import { createSnapshotPayload, parseSnapshotPayload } from "./js/core/snapshot.js?v=20261123b";
+import { normalizeManualSnapshot } from "./js/core/data/manual-snapshot.js?v=20261123b";
+import { runMonteCarlo, analyzeSuccessLevers, MC_ENGINE_VERSION, MC_PROFILE_GROUPS } from "./js/core/monte-carlo.js?v=20261123b";
 import { runStressScenario, runStressComparison, STRESS_ENGINE_VERSION, STRESS_SCENARIOS } from "./js/core/stress-test.js?v=20261123a";
 
 const DEFAULT_EXPENSES = [
@@ -1596,12 +1596,42 @@ function openCpModal(editKey = null) {
   $("cpMdd").value = backtest.maxDrawdown ?? "";
   $("cpSharpe").value = backtest.sharpe ?? "";
   $("cpCalmar").value = "";
+  $("cpRf").value = "";
+  $("cpDeriveHint").textContent = "填好 CAGR 和夏普后点击，自动预填波动率";
   $("cpPeriod").value = backtest.period && backtest.period !== "自定义参数" ? backtest.period : "";
   $("cpHoldingsRows").innerHTML = "";
   (source?.holdings || []).forEach((row) => addCpHoldingRow(row.name, row.weight));
   $("cpSave").textContent = editKey ? "保存修改" : "保存并启用";
   renderSavedProfiles();
   $("cpModalOverlay").hidden = false;
+}
+
+// 由夏普反推波动率：σ = (CAGR − rf) ÷ 夏普，rf 取夏普口径的无风险利率（留空按 0）。
+function deriveVolFromSharpe() {
+  const hint = $("cpDeriveHint");
+  const cagr = Number($("cpCagr").value);
+  const sharpe = Number($("cpSharpe").value);
+  const rfText = $("cpRf").value.trim();
+  const rf = rfText !== "" ? Number(rfText) : 0;
+  if (!Number.isFinite(cagr) || $("cpCagr").value.trim() === "") {
+    hint.textContent = "请先填写年化收益 CAGR";
+    return;
+  }
+  if (!Number.isFinite(sharpe) || $("cpSharpe").value.trim() === "" || sharpe <= 0) {
+    hint.textContent = "请填写正的夏普比率";
+    return;
+  }
+  if (!Number.isFinite(rf) || rf < 0) {
+    hint.textContent = "无风险利率需为不小于 0 的百分数";
+    return;
+  }
+  const sigma = (cagr - rf) / sharpe;
+  if (!Number.isFinite(sigma) || sigma <= 0 || sigma > 100) {
+    hint.textContent = `反推结果 σ = ${sigma?.toFixed(2)}% 不在有效范围（0–100%），请检查 rf 口径（夏普的分母是无风险利率之上的超额收益波动）`;
+    return;
+  }
+  $("cpVol").value = Number(sigma.toFixed(2));
+  hint.textContent = `σ = (${cagr} − ${rf}) ÷ ${sharpe} = ${sigma.toFixed(2)}% 已预填，请核对 rf 口径后保存`;
 }
 
 function closeCpModal() {
@@ -2372,6 +2402,7 @@ $("cpModalClose").addEventListener("click", closeCpModal);
 $("cpCancel").addEventListener("click", closeCpModal);
 $("cpSave").addEventListener("click", saveCustomProfileFromForm);
 $("cpAddHolding").addEventListener("click", () => addCpHoldingRow());
+$("cpDeriveVol").addEventListener("click", deriveVolFromSharpe);
 $("cpSavedList").addEventListener("click", (event) => {
   const button = event.target.closest("[data-cp-delete]");
   if (button) deleteCustomProfile(button.dataset.cpDelete);

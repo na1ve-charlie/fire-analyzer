@@ -492,6 +492,9 @@ html[data-theme="dark"] .mc-modal { border-color: var(--line-strong); box-shadow
 .cp-holding-remove:hover { color: var(--red); border-color: var(--red); }
 .cp-add-holding { font-size: 11px; }
 .cp-actions { display: flex; gap: 10px; }
+.cp-derive-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 9px; background: var(--surface-soft); }
+.cp-derive-row .cp-derive-rf { flex: 0 0 180px; }
+.cp-derive-hint { flex: 1; min-width: 0; color: var(--muted); font-size: 10.5px; line-height: 1.6; font-variant-numeric: tabular-nums; }
 .button-primary { background: var(--teal); color: #fff; padding: 9px 18px; }
 .button-primary:hover { filter: brightness(1.05); }
 .cp-saved-block { margin-bottom: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
