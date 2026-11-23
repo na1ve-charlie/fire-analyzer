@@ -98,11 +98,31 @@ test("所有路径逐年资金守恒误差为 0", () => {
 
 test("期末资产分位数有序，失败年份分桶求和一致", () => {
   const result = simulate({ sigmaOverride: 0.35 });
-  assert.ok(result.p10End <= result.p50End);
-  assert.ok(result.p50End <= result.p90End);
-  assert.ok(result.p10Min <= result.p50Min);
+  assert.ok(result.p1End <= result.p5End);
+  assert.ok(result.p5End <= result.p10End);
+  assert.ok(result.p10End <= result.p25End);
+  assert.ok(result.p25End <= result.p50End);
+  assert.ok(result.p50End <= result.p75End);
+  assert.ok(result.p75End <= result.p90End);
+  assert.ok(result.p10Min <= result.p25Min);
+  assert.ok(result.p25Min <= result.p50Min);
+  assert.ok(result.p50Min <= result.p75Min);
+  assert.ok(result.p75Min <= result.p90Min);
   assert.equal(result.buckets.reduce((sum, bucket) => sum + bucket.count, 0), result.failedCount);
   assert.equal(result.failedCount + result.successCount, result.runs);
+});
+
+test("分位数口径：失败率低于分位时该分位为正，高于则为零", () => {
+  // 高成功率：失败率 2.4% < 5%，P5 应为真实的正余额
+  const safe = simulate({ startingPrincipal: baseResult.conservative * 1.5, sigmaOverride: 0.2 });
+  if (safe.failedCount / safe.runs < 0.05) {
+    assert.ok(safe.p5End > 0, "失败率 <5% 时 P5 应为正数");
+  }
+  // 高失败率：失败率 >25%，P25 必为 0
+  const risky = simulate({ startingPrincipal: baseResult.reverse * 0.7, sigmaOverride: 0.3 });
+  if (risky.failedCount / risky.runs > 0.25) {
+    assert.equal(risky.p25End, 0);
+  }
 });
 
 test("路径注入与固定收益率口径一致", () => {
@@ -240,6 +260,72 @@ test("失败归因：无失败路径时不产出归因", () => {
   assert.equal(safe.failureAttribution, null);
 });
 
+test("自定义模拟次数在 500–20000 之间生效并参与分桶输出", () => {
+  const custom = simulate({ runs: 750 });
+  assert.equal(custom.runs, 750);
+  assert.equal(custom.buckets.reduce((sum, bucket) => sum + bucket.count, 0), custom.failedCount);
+  assert.ok(Array.isArray(custom.bucketPaths));
+  const belowMin = simulate({ runs: 50 });
+  assert.equal(belowMin.runs, 100);
+  const aboveMax = simulate({ runs: 99999 });
+  assert.equal(aboveMax.runs, 20000);
+});
+
+test("耗尽年份分桶输出典型路径：分桶对齐、样本合计等于失败数、资产守恒", () => {
+  const result = simulate({ profileKey: "balanced", startingPrincipal: baseResult.reverse });
+  const paths = result.bucketPaths;
+  assert.ok(paths.some(Boolean), "存在失败路径时应产出典型路径");
+  // bucketPaths 与 buckets 必须逐索引对齐（空桶为 null），否则前端点击柱形会打开错误的区间。
+  assert.equal(paths.length, result.buckets.length);
+  paths.forEach((bucket, index) => {
+    if (bucket === null) {
+      assert.equal(result.buckets[index].count, 0, `空桶 ${index} 对应的统计计数也应为 0`);
+      return;
+    }
+    assert.equal(bucket.sampleCount, result.buckets[index].count);
+    const sampledTotal = paths.reduce((sum, bucket) => sum + (bucket?.sampleCount || 0), 0);
+    assert.equal(sampledTotal, result.failedCount);
+    assert.ok(bucket.start >= 1 && bucket.end <= result.years);
+    assert.ok(bucket.sampleCount > 0);
+    assert.ok(bucket.depletionYear >= bucket.start && bucket.depletionYear <= bucket.end
+      || (bucket.depletionYear === result.years && bucket.end === result.years));
+    assert.equal(bucket.medianPath.length, result.years);
+    assert.equal(bucket.points.length, result.years + 1);
+    assert.equal(bucket.points[0].balance, result.startingPrincipal);
+    // 逐点资金守恒：年末资产 = 期初资产 + 投资收益 − 实际提取。
+    for (const point of bucket.points) {
+      const expected = Math.max(0, point.startBalance + point.investmentReturn - point.withdrawal);
+      assert.ok(Math.abs(point.balance - expected) < 0.01);
+    }
+  });
+  // 固定种子下典型路径完全可复现。
+  const again = simulate({ profileKey: "balanced", startingPrincipal: baseResult.reverse });
+  assert.deepEqual(
+    again.bucketPaths.map((bucket) => bucket ? bucket.medianPath.map((r) => Number(r.toFixed(12))) : null),
+    paths.map((bucket) => bucket ? bucket.medianPath.map((r) => Number(r.toFixed(12))) : null)
+  );
+});
+
+test("无失败路径时 bucketPaths 为空数组", () => {
+  const safe = simulate({ sigmaOverride: 0, startingPrincipal: baseResult.conservative * 3 });
+  assert.equal(safe.failedCount, 0);
+  assert.deepEqual(safe.bucketPaths, []);
+});
+
+test("空桶为 null 且与统计桶索引对齐", () => {
+  // 用低波动构造只有少数桶有样本的场景，验证 null 占位逻辑。
+  const result = simulate({ profileKey: "balanced", startingPrincipal: baseResult.reverse, sigmaOverride: 0.12 });
+  if (result.failedCount === 0) {
+    assert.deepEqual(result.bucketPaths, []);
+    return;
+  }
+  assert.equal(result.bucketPaths.length, result.buckets.length);
+  result.bucketPaths.forEach((bucket, index) => {
+    if (bucket === null) assert.equal(result.buckets[index].count, 0);
+    else assert.equal(bucket.sampleCount, result.buckets[index].count);
+  });
+});
+
 test("失败归因：高波动组合的主因更偏向顺序风险与极端亏损", () => {
   const common = { withAttribution: true, runs: 600, startingPrincipal: baseResult.reverse };
   const stable = simulate({ ...common, profileKey: "balanced" });
@@ -275,10 +361,169 @@ test("胜率工具箱输出目标本金与多种提升杠杆", () => {
   });
   assert.ok(analysis.targetPrincipal > 0);
   assert.ok(analysis.baselineSuccessRate >= 0 && analysis.baselineSuccessRate <= 1);
-  assert.equal(analysis.levers.length, 7);
+  // 8 个可勾选项：支出降低 / 每月额外收入 / 过渡期兼职收入 / 推迟 FIRE / 提高初始本金 / 红利退休金 / 支出弹性 / 支出弹性强化档。
+  assert.equal(analysis.levers.length, 8);
   assert.equal(analysis.profiles.length, Object.keys(MC_PROFILES).length);
-  assert.ok(analysis.levers.some((item) => item.label.includes("支出降低")));
-  assert.ok(analysis.levers.some((item) => item.label.includes("推迟")));
+  assert.ok(analysis.levers.some((item) => item.key === "expenseCut"));
+  assert.ok(analysis.levers.some((item) => item.key === "delay"));
+  assert.ok(analysis.levers.some((item) => item.key === "extraPrincipal"));
+  assert.ok(analysis.levers.some((item) => item.key === "flexibility"));
+  assert.ok(analysis.levers.some((item) => item.key === "flexibilityStrong"));
+  assert.ok(analysis.levers.some((item) => item.key === "bridge"));
   assert.equal(analysis.dividendEnabledInBaseline, false);
-  assert.ok(analysis.levers.some((item) => item.label === "计入页面红利退休金"));
+  assert.ok(analysis.levers.some((item) => item.key === "dividend"));
+  // 未传 selection 时无勾选组合。
+  assert.equal(analysis.hasSelection, false);
+  assert.equal(analysis.combined, null);
+});
+
+test("过渡期兼职收入杠杆：提升成功率且只在 FIRE 后前 N 年生效", () => {
+  // 单项杠杆：前 5 年兼职 3000/月应提升成功率。
+  const withBridge = analyzeSuccessLevers({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    targetRate: 0.9,
+    runs: 500,
+    startingPrincipal: baseResult.reverse,
+    profileKey: "portfolioA",
+    selection: {
+      params: { bridgeMonthly: 3000, bridgeYears: 5 },
+      checked: { bridge: true }
+    }
+  });
+  const bridge = withBridge.levers.find((item) => item.key === "bridge");
+  assert.ok(bridge);
+  assert.ok(bridge.successRate > withBridge.baselineSuccessRate, "过渡期收入应提升成功率");
+  // 组合勾选：桥接收入进入组合与反推口径。
+  assert.ok(withBridge.hasSelection);
+  assert.ok(withBridge.combined);
+  assert.ok(withBridge.combined.details.some((text) => text.includes("兼职")));
+  // 参数为 0 时杠杆行仍展示但不重跑。
+  const empty = analyzeSuccessLevers({
+    fireResult: baseResult, fireInput: baseInput, targetRate: 0.9, runs: 300,
+    startingPrincipal: baseResult.chartStart, profileKey: "portfolioA",
+    selection: { params: { bridgeMonthly: 0, bridgeYears: 0 }, checked: { bridge: false } }
+  });
+  const emptyBridge = empty.levers.find((item) => item.key === "bridge");
+  assert.equal(emptyBridge.successRate, empty.baselineSuccessRate);
+});
+
+test("支出弹性强化档：救活率不低于普通档", () => {
+  const analysis = analyzeSuccessLevers({
+    fireResult: baseResult, fireInput: baseInput, targetRate: 0.9, runs: 500,
+    startingPrincipal: baseResult.reverse, profileKey: "equity100"
+  });
+  const flex = analysis.levers.find((item) => item.key === "flexibility");
+  const strong = analysis.levers.find((item) => item.key === "flexibilityStrong");
+  assert.ok(strong.successRate >= flex.successRate, "回撤 30% 减 30% 的效果应不低于回撤 20% 减 10%");
+});
+
+test("胜率工具箱勾选组合完整重算", () => {
+  const analysis = analyzeSuccessLevers({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    targetRate: 0.9,
+    runs: 300,
+    startingPrincipal: baseResult.chartStart,
+    profileKey: "portfolioA",
+    selection: {
+      params: { expenseCutPct: 10, extraMonthlyIncome: 1000, delayYears: 3, extraPrincipal: 100000 },
+      checked: { expenseCut: true, extraIncome: false, delay: false, extraPrincipal: true, dividendIncome: false, flexibility: false },
+      dividendIncome: false,
+      expenseFlexibility: false
+    }
+  });
+  assert.equal(analysis.hasSelection, true);
+  assert.ok(analysis.combined);
+  // 组合口径：支出降 10%，本金 = 原本金 + 10 万（未勾选推迟，不计复利增长）。
+  assert.ok(analysis.combined.annualExpense < baseResult.annual);
+  assert.ok(analysis.combined.principal > baseResult.chartStart);
+  assert.ok(analysis.combined.targetPrincipal > 0);
+  // 组合成功率按同一批随机路径重算，提升幅度与基线可比。
+  assert.ok(analysis.combined.successRate >= 0 && analysis.combined.successRate <= 1);
+  assert.ok(analysis.combined.details.length >= 2);
+});
+
+test("胜率工具箱勾选参数为 0 时不重复计算", () => {
+  const analysis = analyzeSuccessLevers({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    targetRate: 0.9,
+    runs: 300,
+    startingPrincipal: baseResult.chartStart,
+    profileKey: "portfolioA",
+    selection: {
+      params: { expenseCutPct: 0, extraMonthlyIncome: 0, delayYears: 0, extraPrincipal: 0 },
+      checked: { expenseCut: true, extraIncome: true, delay: true, extraPrincipal: true, dividendIncome: false, flexibility: false },
+      dividendIncome: false,
+      expenseFlexibility: false
+    }
+  });
+  // 参数全为 0：组合不生效，也不产生误导性的提升。
+  assert.equal(analysis.hasSelection, false);
+  assert.equal(analysis.combined, null);
+});
+
+test("自定义组合：模拟直接使用传入的 CAGR 与波动率", () => {
+  const customProfiles = {
+    "custom-1": {
+      key: "custom-1",
+      label: "我的自定义组合",
+      calibrated: true,
+      custom: true,
+      note: "页面自定义组合",
+      sigma: 12.5,
+      backtest: { period: "2015-01-01 ~ 2026-11-09", cagr: 9.25, volatility: 12.5 }
+    }
+  };
+  const mc = simulate({ profileKey: "custom-1", customProfiles });
+  assert.equal(mc.profileKey, "custom-1");
+  assert.equal(mc.profile.label, "我的自定义组合");
+  assert.equal(mc.profile.custom, true);
+  assert.equal(mc.mu, 0.0925);
+  assert.equal(mc.sigma, 0.125);
+  // 反推分布同样走自定义组合口径
+  const required = computeRequiredPrincipalDistribution({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    profileKey: "custom-1",
+    customProfiles,
+    runs: 300
+  });
+  assert.equal(required.profileKey, "custom-1");
+  assert.equal(required.mu, 0.0925);
+});
+
+test("自定义组合：未知 key 回退股债 50/50", () => {
+  const mc = simulate({ profileKey: "custom-missing", customProfiles: null });
+  assert.equal(mc.profileKey, "balanced");
+  assert.equal(mc.profile.label, MC_PROFILES.balanced.label);
+});
+
+test("胜率工具箱配置对比包含自定义组合", () => {
+  const customProfiles = {
+    "custom-2": {
+      key: "custom-2",
+      label: "自定义对照",
+      calibrated: true,
+      custom: true,
+      sigma: 8,
+      backtest: { period: "自定义", cagr: 6, volatility: 8 }
+    }
+  };
+  const analysis = analyzeSuccessLevers({
+    fireResult: baseResult,
+    fireInput: baseInput,
+    targetRate: 0.9,
+    runs: 200,
+    startingPrincipal: baseResult.chartStart,
+    profileKey: "custom-2",
+    customProfiles
+  });
+  assert.equal(analysis.baselineSuccessRate, 1);
+  const customRow = analysis.profiles.find((profile) => profile.key === "custom-2");
+  assert.ok(customRow, "自定义组合应出现在配置对比中");
+  assert.equal(customRow.label, "自定义对照");
+  const builtinRow = analysis.profiles.find((profile) => profile.key === "portfolioA");
+  assert.ok(builtinRow, "内置组合仍应出现在配置对比中");
 });

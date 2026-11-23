@@ -5,9 +5,9 @@
 
 import {
   simulateCustomProjection, reserveInterestForPrincipal, calculateFirePlan
-} from "./fire-engine.js?v=20261119i";
+} from "./fire-engine.js?v=20261123a";
 
-export const MC_ENGINE_VERSION = "monte-carlo.1.2.0";
+export const MC_ENGINE_VERSION = "monte-carlo.1.4.0";
 
 // sigma 为年度算术波动率的示意值；通用预设的 mu 取当前方案的年化收益率中枢。
 // 六个命名组合（calibrated）按用户提供的组合级回测 CAGR 与波动率直接校准，
@@ -203,6 +203,13 @@ export const MC_PROFILE_GROUPS = {
   etfSample: "2023-06-13 ~ 2026-11-09"
 };
 
+// 组合解析：内置预置优先，其次页面自定义组合（customProfiles 为 key→profile 映射）；未知 key 回退股债 50/50。
+export function resolveProfile(profileKey, customProfiles = null) {
+  if (MC_PROFILES[profileKey]) return { key: profileKey, profile: MC_PROFILES[profileKey] };
+  if (customProfiles && customProfiles[profileKey]) return { key: profileKey, profile: customProfiles[profileKey] };
+  return { key: "balanced", profile: MC_PROFILES.balanced };
+}
+
 function clamp(value, min, max, fallback) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -258,6 +265,65 @@ function buildFailureBuckets(failedYears, years, bucketSize = 10) {
     });
   }
   return buckets;
+}
+
+// 每个耗尽年份桶的「典型失败路径」：取桶内样本中位收益率逐年构成一条代表性路径，
+// 再用与正式现金流完全相同的 simulateCustomProjection 重放，得到可展示的资产轨迹。
+function buildBucketPathSamples({
+  failedYearByRun, returnPathByRun, years, bucketSize, annualExpense, mu,
+  principal, inflation, annualReserveInterest, dividendIncomeByYear,
+  expenseFlexibility, flexibilityDrawdown, flexibilityCut, isEndowment
+}) {
+  if (failedYearByRun.length === 0) return [];
+  const bucketCount = Math.ceil(years / bucketSize);
+  const samples = new Array(bucketCount);
+  for (let index = 0; index < bucketCount; index += 1) {
+    const start = index * bucketSize + 1;
+    const end = Math.min(start + bucketSize - 1, years);
+    const members = [];
+    for (let run = 0; run < failedYearByRun.length; run += 1) {
+      if (failedYearByRun[run] >= start && failedYearByRun[run] <= end) {
+        members.push(returnPathByRun[run]);
+      }
+    }
+    if (members.length === 0) continue;
+
+    // 中位路径：逐年取各样本收益率的中位数，保留真实年份间的收益顺序结构。
+    const medianPath = new Array(years);
+    const column = new Array(members.length);
+    for (let year = 0; year < years; year += 1) {
+      for (let m = 0; m < members.length; m += 1) column[m] = members[m][year];
+      column.sort((a, b) => a - b);
+      medianPath[year] = percentile(column, 0.5);
+    }
+
+    const simulation = simulateCustomProjection({
+      principal,
+      annualExpense,
+      annualReturn: mu,
+      inflation,
+      years,
+      annualReserveInterest,
+      dividendIncomeByYear,
+      returnPath: medianPath,
+      expenseFlexibility,
+      flexibilityDrawdown,
+      flexibilityCut
+    });
+
+    // 与主循环同口径的失败判定；重放失败年份取实际缺口年份，避免与桶区间错位。
+    const replayDepletion = simulation.depletionYear ?? years;
+    samples[index] = {
+      start,
+      end,
+      sampleCount: members.length,
+      depletionYear: replayDepletion,
+      medianPath,
+      points: simulation.points
+    };
+  }
+  // 保持与 buildFailureBuckets 相同的索引对齐：没有样本的桶显式置为 null，调用方按索引取用。
+  return Array.from(samples, (sample) => sample || null);
 }
 
 // 用一条指定收益路径做轻量存续判定（不构造 points，专供反事实归因使用）。
@@ -355,14 +421,18 @@ export function runMonteCarlo({
   expenseFlexibility = false,
   flexibilityDrawdown = 0.2,
   flexibilityCut = 0.1,
+  extraIncomeByYear = null,
   sigmaOverride = null,
-  withAttribution = false
+  withAttribution = false,
+  withBucketPaths = true,
+  customProfiles = null
 } = {}) {
   if (!fireResult || !fireResult.assumptions) {
     throw new Error("runMonteCarlo 需要 calculateFirePlan 的结果");
   }
 
-  const profile = MC_PROFILES[profileKey] ? MC_PROFILES[profileKey] : MC_PROFILES.balanced;
+  const resolved = resolveProfile(profileKey, customProfiles);
+  const profile = resolved.profile;
   // 回测校准组合（组合一/二/三）：模拟中枢直接取回测 CAGR 与波动率，
   // 不再用持仓权重×相关性推算——那会偏离用户实测的组合级数字。
   const portfolioStats = profile.calibrated ? null : (profile.holdings ? computePortfolioStats(profile.holdings) : null);
@@ -378,9 +448,14 @@ export function runMonteCarlo({
   const principal = clamp(startingPrincipal ?? fireResult.chartStart ?? fireInput.principal ?? 0, 0, 1e12, 0);
   const inflation = Number(fireResult.inflation) || 0;
   const annualReserveInterest = reserveInterestForStartingPrincipal(fireResult, principal);
-  const dividendIncomeByYear = fireResult.dividendPlan?.enabled
+  const baseDividendIncome = fireResult.dividendPlan?.enabled
     ? fireResult.dividendPlan.dividendIncomeByYear
     : new Array(years + 1).fill(0);
+  // 过渡期收入（Barista FI）：前 N 年的固定年度收入，与红利抵扣合并进同一条抵扣通道。
+  const bridgeMerged = Array.isArray(extraIncomeByYear) && extraIncomeByYear.some((value) => Number(value) > 0);
+  const dividendIncomeByYear = bridgeMerged
+    ? baseDividendIncome.map((value, year) => (Number(value) || 0) + Math.max(0, Number(extraIncomeByYear[year]) || 0))
+    : baseDividendIncome;
   const isEndowment = (fireInput.scenario ?? fireResult.assumptions.scenario) === "endowment";
   const sigmaLog = sigma > 0 ? Math.log(1 + sigma) : 0;
   const muLog = Math.log(1 + mu);
@@ -389,6 +464,8 @@ export function runMonteCarlo({
   const endRealBalances = [];
   const minBalances = [];
   const failedYears = [];
+  const failedYearByRun = [];
+  const returnPathByRun = [];
   const attributionStats = {
     geoFailed: [], geoSuccess: [],
     rescued: { order: 0, volatility: 0, expense: 0, principal: 0, any: 0 },
@@ -443,6 +520,10 @@ export function runMonteCarlo({
       if (withAttribution) attributionStats.geoSuccess.push(geometricMeanReturn(returnPath));
     } else {
       failedYears.push(simulation.depletionYear ?? years);
+      if (withBucketPaths) {
+        failedYearByRun.push(simulation.depletionYear ?? years);
+        returnPathByRun.push(returnPath);
+      }
       if (withAttribution) {
         const geoReturn = geometricMeanReturn(returnPath);
         attributionStats.geoFailed.push(geoReturn);
@@ -506,7 +587,7 @@ export function runMonteCarlo({
     engineVersion: MC_ENGINE_VERSION,
     runs: runCount,
     seed: randomSeed,
-    profileKey: MC_PROFILES[profileKey] ? profileKey : "balanced",
+    profileKey: resolved.key,
     profile,
     holdings: profile.holdings || null,
     portfolioStats,
@@ -523,12 +604,36 @@ export function runMonteCarlo({
     endBalances,
     endRealBalances,
     minBalances,
+    p1End: percentile(sortedEnd, 0.01),
+    p5End: percentile(sortedEnd, 0.05),
     p10End: percentile(sortedEnd, 0.1),
+    p25End: percentile(sortedEnd, 0.25),
     p50End: percentile(sortedEnd, 0.5),
+    p75End: percentile(sortedEnd, 0.75),
     p90End: percentile(sortedEnd, 0.9),
     p10Min: percentile(sortedMin, 0.1),
+    p25Min: percentile(sortedMin, 0.25),
     p50Min: percentile(sortedMin, 0.5),
+    p75Min: percentile(sortedMin, 0.75),
+    p90Min: percentile(sortedMin, 0.9),
     buckets: buildFailureBuckets(failedYears, years),
+    // 耗尽年份分桶的典型现金流曲线：每桶取样本中位收益率路径重放，供弹窗解读使用。
+    bucketPaths: withBucketPaths ? buildBucketPathSamples({
+      failedYearByRun,
+      returnPathByRun,
+      years,
+      bucketSize: 10,
+      annualExpense: fireResult.annual,
+      mu,
+      principal,
+      inflation,
+      annualReserveInterest,
+      dividendIncomeByYear,
+      expenseFlexibility,
+      flexibilityDrawdown,
+      flexibilityCut,
+      isEndowment
+    }) : [],
     conservationMaxError,
     flexAppliedCount,
     failureAttribution
@@ -547,12 +652,15 @@ export function computeRequiredPrincipalDistribution({
   extraMonthlyIncome = 0,
   expenseFlexibility = false,
   flexibilityDrawdown = 0.2,
-  flexibilityCut = 0.1
+  flexibilityCut = 0.1,
+  extraIncomeByYear = null,
+  customProfiles = null
 } = {}) {
   if (!fireResult || !fireResult.assumptions) {
     throw new Error("computeRequiredPrincipalDistribution 需要 calculateFirePlan 的结果");
   }
-  const profile = MC_PROFILES[profileKey] ? MC_PROFILES[profileKey] : MC_PROFILES.balanced;
+  const resolved = resolveProfile(profileKey, customProfiles);
+  const profile = resolved.profile;
   const stats = profile.calibrated ? null : (profile.holdings ? computePortfolioStats(profile.holdings) : null);
   const runCount = Math.round(clamp(runs, 100, 5000, 2000));
   const randomSeed = Math.floor(clamp(seed, 0, 2147483647, 20261119));
@@ -564,9 +672,14 @@ export function computeRequiredPrincipalDistribution({
   const inflation = Number(fireResult.inflation) || 0;
   // 胜率反推是在求「候选本金」，因此储备利息也必须按该候选本金同步计算。
   const reserveInterestFor = (candidate) => reserveInterestForStartingPrincipal(fireResult, candidate);
-  const dividendIncomeByYear = fireResult.dividendPlan?.enabled
+  const baseDividendIncome = fireResult.dividendPlan?.enabled
     ? fireResult.dividendPlan.dividendIncomeByYear
     : new Array(years + 1).fill(0);
+  // 过渡期收入（Barista FI）：前 N 年的固定年度收入，与红利抵扣合并进同一条抵扣通道。
+  const bridgeMerged = Array.isArray(extraIncomeByYear) && extraIncomeByYear.some((value) => Number(value) > 0);
+  const dividendIncomeByYear = bridgeMerged
+    ? baseDividendIncome.map((value, year) => (Number(value) || 0) + Math.max(0, Number(extraIncomeByYear[year]) || 0))
+    : baseDividendIncome;
   const isEndowment = (fireInput.scenario ?? fireResult.assumptions.scenario) === "endowment";
   const annualExpense = Math.max(0, Number(fireResult.annual) * (1 - clamp(expenseCut, 0, 0.9, 0))
     - Number(extraMonthlyIncome) * 12);
@@ -611,7 +724,7 @@ export function computeRequiredPrincipalDistribution({
   return {
     runs: runCount,
     seed: randomSeed,
-    profileKey: MC_PROFILES[profileKey] ? profileKey : "balanced",
+    profileKey: resolved.key,
     mu, sigma, annualExpense,
     sorted,
     p50: percentile(sorted, 0.5),
@@ -621,7 +734,9 @@ export function computeRequiredPrincipalDistribution({
   };
 }
 
-// 一键汇总可用的胜率杠杆：目标本金分位、单项调整效果、配置对比。
+// 一键汇总可用的胜率杠杆：目标本金分位、可自由勾选组合的调整项、配置对比。
+// selection 描述勾选组合：params 为各项自定义参数（缺省值仅作预填建议），checked 为各项勾选状态。
+// 勾选或参数变化后整份分析完整重算：基线、单项、组合（含反推本金分布）按同一批随机路径全部重跑。
 export function analyzeSuccessLevers({
   fireResult,
   fireInput = {},
@@ -629,83 +744,226 @@ export function analyzeSuccessLevers({
   runs = 2000,
   seed = 20261119,
   startingPrincipal,
-  profileKey = "portfolioA"
+  profileKey = "portfolioA",
+  selection = null,
+  customProfiles = null
 } = {}) {
   const target = clamp(targetRate, 0.5, 0.99, 0.9);
-  const common = { fireResult, fireInput, runs, seed, startingPrincipal, profileKey };
-  const required = computeRequiredPrincipalDistribution({ ...common });
+  const common = { fireResult, fireInput, runs, seed, startingPrincipal, profileKey, customProfiles };
   const baseline = runMonteCarlo({ ...common });
-  const targetPrincipal = percentile(required.sorted, target);
+  const horizonYears = Math.round(clamp(fireInput.years ?? fireResult.assumptions.years, 1, 80, 50));
+  // 过渡期收入：FIRE 后前 N 年每年有固定兼职收入，名义金额不随通胀（与红利抵扣同通道）。
+  const bridgeByYear = (monthly, yearCount) => {
+    const arr = new Array(horizonYears + 1).fill(0);
+    const span = Math.min(Math.max(0, Math.round(yearCount)), horizonYears);
+    for (let year = 1; year <= span; year += 1) arr[year] = monthly * 12;
+    return arr;
+  };
 
-  const levers = [];
-  for (const cut of [0.1, 0.2]) {
-    const mc = runMonteCarlo({
-      ...common,
-      fireResult: { ...fireResult, annual: fireResult.annual * (1 - cut) }
-    });
-    levers.push({ label: `支出降低 ${(cut * 100).toFixed(0)}%`, detail: `年支出降至 ${formatPlain(fireResult.annual * (1 - cut))}`, successRate: mc.successRate });
-  }
-  for (const extra of [1000, 2000]) {
-    const mc = runMonteCarlo({
-      ...common,
-      fireResult: { ...fireResult, annual: Math.max(0, fireResult.annual - extra * 12) }
-    });
-    levers.push({ label: `每月多 ${formatPlain(extra)} 收入`, detail: `相当于年支出减少 ${formatPlain(extra * 12)}`, successRate: mc.successRate });
-  }
-  const delayPrincipal = (years) => {
+  // 各项自定义参数：未填或为 0 时该行只展示输入框，不产生实际调整。
+  const params = selection?.params ?? {};
+  const checked = selection?.checked ?? {};
+  const isChecked = (key) => Boolean(checked[key]);
+  const sel = {
+    expenseCutPct: clamp(Number(params.expenseCutPct) || 0, 0, 90, 0),
+    extraMonthlyIncome: Math.max(0, Number(params.extraMonthlyIncome) || 0),
+    delayYears: Math.round(clamp(Number(params.delayYears) || 0, 0, 30, 0)),
+    extraPrincipal: Math.max(0, Number(params.extraPrincipal) || 0),
+    bridgeMonthly: Math.max(0, Number(params.bridgeMonthly) || 0),
+    bridgeYears: Math.round(clamp(Number(params.bridgeYears) || 0, 0, horizonYears, 0)),
+    dividendIncome: Boolean(selection?.dividendIncome),
+    expenseFlexibility: Boolean(selection?.expenseFlexibility),
+    flexibilityStrong: Boolean(selection?.flexibilityStrong)
+  };
+  const expenseCut = sel.expenseCutPct / 100;
+  const adjustedAnnual = (cut, extraMonthly) => Math.max(0, Number(fireResult.annual) * (1 - cut) - extraMonthly * 12);
+  // 推迟 FIRE：本金按中枢收益复利增长，定投继续按现有参数累计。
+  const delayPrincipal = (base, years) => {
     const rate = baseline.mu;
     const dcaMonthly = Number(fireInput.dcaMonthly ?? fireResult.assumptions.dcaMonthly) || 0;
     const factor = Math.pow(1 + rate, years);
     const contribution = rate > 0
       ? dcaMonthly * 12 * (factor - 1) / rate
       : dcaMonthly * 12 * years;
-    return startingPrincipal * factor + contribution;
+    return base * factor + contribution;
   };
-  for (const delay of [3, 5]) {
-    const grown = delayPrincipal(delay);
+
+  // 单项效果：始终展示全部调整项（含输入框），参数为 0 的项直接复用基线，不重跑模拟。
+  const levers = [];
+  if (sel.expenseCutPct > 0) {
+    const mc = runMonteCarlo({ ...common, fireResult: { ...fireResult, annual: adjustedAnnual(expenseCut, 0) } });
+    levers.push({ key: "expenseCut", name: "支出降低", label: `支出降低 ${sel.expenseCutPct}%`, detail: `年支出降至 ${formatPlain(adjustedAnnual(expenseCut, 0))}`, successRate: mc.successRate });
+  } else {
+    levers.push({ key: "expenseCut", name: "支出降低", label: "支出降低", detail: "填入比例后计算", successRate: baseline.successRate });
+  }
+  if (sel.extraMonthlyIncome > 0) {
+    const mc = runMonteCarlo({ ...common, fireResult: { ...fireResult, annual: adjustedAnnual(0, sel.extraMonthlyIncome) } });
+    levers.push({ key: "extraIncome", name: "每月额外收入", label: `每月多 ${formatPlain(sel.extraMonthlyIncome)} 收入`, detail: `相当于年支出减少 ${formatPlain(sel.extraMonthlyIncome * 12)}`, successRate: mc.successRate });
+  } else {
+    levers.push({ key: "extraIncome", name: "每月额外收入", label: "每月额外收入", detail: "填入金额后计算", successRate: baseline.successRate });
+  }
+  if (sel.bridgeMonthly > 0 && sel.bridgeYears > 0) {
+    const mc = runMonteCarlo({ ...common, extraIncomeByYear: bridgeByYear(sel.bridgeMonthly, sel.bridgeYears) });
+    levers.push({
+      key: "bridge",
+      name: "过渡期兼职收入",
+      label: `前 ${sel.bridgeYears} 年兼职 ${formatPlain(sel.bridgeMonthly)}/月`,
+      detail: `FIRE 第 1–${sel.bridgeYears} 年每年抵扣 ${formatPlain(sel.bridgeMonthly * 12)}，针对性对冲顺序风险`,
+      successRate: mc.successRate
+    });
+  } else {
+    levers.push({ key: "bridge", name: "过渡期兼职收入", label: "过渡期兼职收入", detail: "填入金额与年数后计算", successRate: baseline.successRate });
+  }
+  if (sel.delayYears > 0) {
+    const grown = delayPrincipal(startingPrincipal, sel.delayYears);
     const mc = runMonteCarlo({ ...common, startingPrincipal: grown });
-    levers.push({ label: `推迟 ${delay} 年 FIRE`, detail: `继续定投后本金约 ${formatPlain(grown)}`, successRate: mc.successRate });
+    levers.push({ key: "delay", name: "推迟 FIRE", label: `推迟 ${sel.delayYears} 年 FIRE`, detail: `继续定投后本金约 ${formatPlain(grown)}`, successRate: mc.successRate });
+  } else {
+    levers.push({ key: "delay", name: "推迟 FIRE", label: "推迟 FIRE", detail: "填入年数后计算", successRate: baseline.successRate });
+  }
+  if (sel.extraPrincipal > 0) {
+    const mc = runMonteCarlo({ ...common, startingPrincipal: startingPrincipal + sel.extraPrincipal });
+    levers.push({ key: "extraPrincipal", name: "提高初始本金", label: `提高初始本金 ${formatPlain(sel.extraPrincipal)}`, detail: `本金增至 ${formatPlain(startingPrincipal + sel.extraPrincipal)}`, successRate: mc.successRate });
+  } else {
+    levers.push({ key: "extraPrincipal", name: "提高初始本金", label: "提高初始本金", detail: "填入金额后计算", successRate: baseline.successRate });
   }
 
   // 页面「红利低波退休金」：按当前定投参数单独算出的领取现金流，作为额外年度抵扣。
   const dividendEnabledInBaseline = Boolean(fireResult.dividendPlan?.enabled);
   const dividendResult = calculateFirePlan({ ...fireInput, dividendEnabled: true });
   const dividendPlan = dividendResult.dividendPlan;
-  if (dividendPlan?.enabled && dividendPlan.startYear !== null) {
-    const mc = runMonteCarlo({
-      ...common,
-      fireResult: { ...fireResult, dividendPlan }
-    });
+  const dividendUsable = Boolean(dividendPlan?.enabled && dividendPlan.startYear !== null);
+  if (dividendUsable) {
+    const mc = runMonteCarlo({ ...common, fireResult: { ...fireResult, dividendPlan } });
     levers.push({
+      key: "dividend",
+      name: "计入页面红利退休金",
       label: "计入页面红利退休金",
       detail: `FIRE 第 ${dividendPlan.startYear} 年起 ${formatPlain(dividendPlan.annualIncome)}/年`,
       successRate: mc.successRate
     });
   } else {
     levers.push({
+      key: "dividend",
+      name: "计入页面红利退休金",
       label: "计入页面红利退休金",
       detail: "当前定投参数无法产生领取金额",
       successRate: baseline.successRate
     });
   }
 
-  const profiles = Object.keys(MC_PROFILES).map((key) => ({
+  const flexMc = runMonteCarlo({ ...common, expenseFlexibility: true });
+  levers.push({
+    key: "flexibility",
+    name: "开启支出弹性",
+    label: "开启支出弹性",
+    detail: "回撤超 20% 时当年支出减 10%",
+    successRate: flexMc.successRate
+  });
+
+  const flexStrongMc = runMonteCarlo({ ...common, expenseFlexibility: true, flexibilityDrawdown: 0.3, flexibilityCut: 0.3 });
+  levers.push({
+    key: "flexibilityStrong",
+    name: "支出弹性·强化档",
+    label: "支出弹性·强化档",
+    detail: "回撤超 30% 时当年支出减 30%，救活率更高但体验代价更大",
+    successRate: flexStrongMc.successRate
+  });
+
+  // 勾选组合：按勾选状态叠加各项参数，整份分析（含反推本金分布）完整重算。
+  const useCut = isChecked("expenseCut") ? expenseCut : 0;
+  const useExtraIncome = isChecked("extraIncome") ? sel.extraMonthlyIncome : 0;
+  const useDelayYears = isChecked("delay") ? sel.delayYears : 0;
+  const useExtraPrincipal = isChecked("extraPrincipal") ? sel.extraPrincipal : 0;
+  const useDividend = sel.dividendIncome && dividendUsable;
+  const useBridge = isChecked("bridge") && sel.bridgeMonthly > 0 && sel.bridgeYears > 0
+    ? bridgeByYear(sel.bridgeMonthly, sel.bridgeYears)
+    : null;
+  // 普通档与强化档弹性互斥：勾选强化档时以强化档参数为准。
+  const useFlex = sel.expenseFlexibility || sel.flexibilityStrong;
+  const flexParams = sel.flexibilityStrong ? { flexibilityDrawdown: 0.3, flexibilityCut: 0.3 } : {};
+  const hasSelection = (useCut > 0 && isChecked("expenseCut")) || (useExtraIncome > 0 && isChecked("extraIncome"))
+    || (useDelayYears > 0 && isChecked("delay")) || (useExtraPrincipal > 0 && isChecked("extraPrincipal"))
+    || Boolean(sel.dividendIncome) || Boolean(useBridge) || useFlex;
+
+  let combined = null;
+  let combinedFireResult = null;
+  let combinedPrincipal = null;
+  if (hasSelection) {
+    const combinedAnnual = adjustedAnnual(useCut, useExtraIncome);
+    combinedPrincipal = delayPrincipal(startingPrincipal + useExtraPrincipal, useDelayYears);
+    combinedFireResult = {
+      ...fireResult,
+      annual: combinedAnnual,
+      dividendPlan: useDividend ? dividendPlan : fireResult.dividendPlan
+    };
+    const combinedCommon = {
+      ...common,
+      fireResult: combinedFireResult,
+      startingPrincipal: combinedPrincipal,
+      expenseFlexibility: useFlex,
+      ...flexParams,
+      extraIncomeByYear: useBridge
+    };
+    const combinedMc = runMonteCarlo({ ...combinedCommon });
+    // 反推所需本金：用原始支出参数 + 组合口径的削减参数，避免重复调整；反推过程中本金按候选值求解。
+    const requiredCombined = computeRequiredPrincipalDistribution({
+      ...common,
+      expenseCut: useCut,
+      extraMonthlyIncome: useExtraIncome,
+      expenseFlexibility: useFlex,
+      ...flexParams,
+      extraIncomeByYear: useBridge
+    });
+    const combinedTargetPrincipal = percentile(requiredCombined.sorted, target);
+    const details = [];
+    if (useCut > 0 && isChecked("expenseCut")) details.push(`支出降低 ${sel.expenseCutPct}%`);
+    if (useExtraIncome > 0 && isChecked("extraIncome")) details.push(`每月多 ${formatPlain(useExtraIncome)} 收入`);
+    if (useDelayYears > 0 && isChecked("delay")) details.push(`推迟 ${useDelayYears} 年 FIRE`);
+    if (useExtraPrincipal > 0 && isChecked("extraPrincipal")) details.push(`初始本金提高 ${formatPlain(useExtraPrincipal)}`);
+    if (sel.dividendIncome) details.push(useDividend ? `计入红利退休金（第 ${dividendPlan.startYear} 年起）` : "红利退休金不可用（当前定投参数无领取金额）");
+    if (useBridge) details.push(`前 ${sel.bridgeYears} 年兼职 ${formatPlain(sel.bridgeMonthly)}/月`);
+    if (sel.flexibilityStrong) details.push("支出弹性强化档（回撤 30% 减 30%）");
+    else if (sel.expenseFlexibility) details.push("开启支出弹性");
+    combined = {
+      principal: combinedPrincipal,
+      annualExpense: combinedAnnual,
+      successRate: combinedMc.successRate,
+      improvement: combinedMc.successRate - baseline.successRate,
+      targetPrincipal: combinedTargetPrincipal,
+      gap: combinedTargetPrincipal - combinedPrincipal,
+      runs: requiredCombined.runs,
+      dividendUsable: useDividend,
+      details
+    };
+  }
+
+  // 配置对比：内置预置与页面自定义组合一起参与；未勾选时按当前本金，勾选后按组合口径（支出与本金同步调整），保证口径一致。
+  const profileContext = hasSelection
+    ? { fireResult: combinedFireResult, startingPrincipal: combinedPrincipal, expenseFlexibility: useFlex, ...flexParams, extraIncomeByYear: useBridge }
+    : {};
+  const profileKeys = [...Object.keys(MC_PROFILES), ...Object.keys(customProfiles || {})];
+  const profiles = profileKeys.map((key) => ({
     key,
-    label: MC_PROFILES[key].label,
-    successRate: runMonteCarlo({ ...common, profileKey: key }).successRate
+    label: resolveProfile(key, customProfiles).profile.label,
+    successRate: runMonteCarlo({ ...common, ...profileContext, profileKey: key }).successRate
   }));
 
+  const required = computeRequiredPrincipalDistribution({ ...common });
   return {
     targetRate: target,
-    targetPrincipal,
+    targetPrincipal: percentile(required.sorted, target),
     currentPrincipal: startingPrincipal,
-    gap: targetPrincipal - startingPrincipal,
+    gap: percentile(required.sorted, target) - startingPrincipal,
     baselineSuccessRate: baseline.successRate,
     dividendEnabledInBaseline,
     dividendPlan,
     required,
     levers,
-    profiles
+    profiles,
+    selection: sel,
+    hasSelection,
+    combined
   };
 }
 

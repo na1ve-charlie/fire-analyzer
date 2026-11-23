@@ -27,6 +27,7 @@
       <nav class="header-nav" aria-label="页面导航">
         <a href="#calculator">测算台</a>
         <a href="#breakdown">方案拆解</a>
+        <a href="#stress">压力测试</a>
         <a href="#montecarlo">波动模拟</a>
         <a href="#method">计算口径</a>
       </nav>
@@ -330,7 +331,7 @@
           <p class="fund-start-note" id="dividendStartNote">未启用；启用后将按定投年限从 FIRE 第 10 年开始领取。</p>
           <div class="fund-controls">
             <label class="fund-field" for="dcaYears"><span>定投年限</span><div class="number-suffix"><input id="dcaYears" type="number" min="1" max="50" step="1" value="10" aria-label="定投年限"><span>年</span></div></label>
-            <label class="fund-field" for="dcaMonthly"><span>定投金额</span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="1200" aria-label="每月定投金额"><span>元 / 月</span></div></label>
+            <label class="fund-field" for="dcaMonthly"><span>定投金额<button class="field-chart-btn" id="dcaCurveButton" type="button" aria-label="查看每月定投金额曲线" title="查看每月定投金额曲线"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13h12M3 10.5l3.2-3.6 2.6 2.2L12.6 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span><div class="number-suffix"><input id="dcaMonthly" type="number" min="0" max="1000000" step="100" value="1200" aria-label="每月定投金额"><span>元 / 月</span></div></label>
             <label class="fund-field" for="dcaReturnRate"><span>年化收益率</span><div class="number-suffix"><input id="dcaReturnRate" type="number" min="0" max="20" step="0.1" value="6" aria-label="定投年化收益率"><span>%</span></div></label>
             <label class="fund-field" for="dividendYield"><span>股息率</span><div class="number-suffix"><input id="dividendYield" type="number" min="0" max="15" step="0.1" value="4" aria-label="股息率"><span>%</span></div></label>
           </div>
@@ -351,6 +352,66 @@
           <p class="panel-footnote">按月复利折算，月末定投；可开启「定投随通胀」使月投额逐年递增。退休期只提取股息、不卖出本金。股息为名义金额，未自动随通胀调整；实际分红可能波动。</p>
         </section>
 
+        <section class="panel stress-panel" id="stress">
+          <div class="section-heading">
+            <div><p class="section-kicker">BLACK SWAN STRESS TEST</p><h2>黑天鹅压力测试</h2></div>
+            <span class="soft-badge" id="stressBadge">—</span>
+          </div>
+          <p class="fund-lead" id="stressLead">把历史上真实发生过的危机叠加到你的方案上：第一年如果遭遇 2008 量级的冲击，你的本金能撑到第几年？</p>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group stress-scenario-group" role="group" aria-label="压力场景">
+              <button type="button" data-stress-scenario="gfc2008" class="active">2008 危机</button>
+              <button type="button" data-stress-scenario="cn2015">2015 异常波动</button>
+              <button type="button" data-stress-scenario="covid2020">2020 疫情</button>
+              <button type="button" data-stress-scenario="dual2022">2022 股债双杀</button>
+              <button type="button" data-stress-scenario="depression1929">1929 大萧条</button>
+              <button type="button" data-stress-scenario="custom">自定义冲击</button>
+            </div>
+          </div>
+          <div class="fund-toggle-row">
+            <div class="fund-toggle-group" role="group" aria-label="提取率护栏">
+              <button type="button" data-stress-gk="false" class="active">提取率护栏：关</button>
+              <button type="button" data-stress-gk="true">提取率护栏：开（超标减提 10%）</button>
+            </div>
+          </div>
+          <div class="stress-custom" id="stressCustom" hidden>
+            <div class="stress-custom-fields">
+              <label class="stress-field" for="stressDepth"><span>首年跌幅</span><div class="number-suffix"><input id="stressDepth" type="number" min="1" max="90" step="1" value="30" aria-label="自定义首年跌幅百分比"><span>%</span></div></label>
+              <label class="stress-field" for="stressLength"><span>冲击年数</span><div class="number-suffix"><input id="stressLength" type="number" min="1" max="10" step="1" value="2" aria-label="自定义冲击持续年数"><span>年</span></div></label>
+              <label class="stress-field" for="stressInflation"><span>危机期通胀上浮</span><div class="number-suffix"><input id="stressInflation" type="number" min="-5" max="15" step="0.5" value="3" aria-label="危机期年通胀上浮百分点"><span>pp</span></div></label>
+            </div>
+            <p class="stress-custom-note">冲击形态为示意假设：首年吃满跌幅，其后每年亏损收窄至前一年的 40%，危机期年通胀按输入上浮。</p>
+          </div>
+          <div class="stress-kpis" id="stressKpis"></div>
+          <div class="stress-status-row">
+            <div class="stress-alert" id="stressAlert" role="status"></div>
+            <div class="stress-buckets">
+              <div class="stress-buckets-title">三层水桶结构（应对危机的取钱顺序）</div>
+              <div class="stress-bucket-row"><span class="stress-bucket-dot bucket-cash"></span><span>现金桶 · 3 年开销</span><strong id="bucketCash">—</strong><small id="bucketCashNote">危机时只从这里取钱</small></div>
+              <div class="stress-bucket-row"><span class="stress-bucket-dot bucket-bond"></span><span>债券桶 · 5 年开销</span><strong id="bucketBond">—</strong><small>修复期过渡资金</small></div>
+              <div class="stress-bucket-row"><span class="stress-bucket-dot bucket-equity"></span><span>权益桶 · 长期增长</span><strong id="bucketEquity">—</strong><small>危机中不动、等修复</small></div>
+            </div>
+          </div>
+          <div class="stress-columns">
+            <div>
+              <div class="fund-scenario-title">场景对比 · 危机第一年就爆发</div>
+              <div class="table-wrap"><table id="stressTable"></table></div>
+              <p class="stress-table-hint">「撑到」为资产耗尽年份；「撑过」表示全程无缺口。存续判定与主现金流同口径。</p>
+            </div>
+            <div>
+              <div class="fund-scenario-title">危机路径资产曲线</div>
+              <div class="chart-wrap stress-chart-wrap"><svg id="stressChart" role="img" aria-label="压力场景资产曲线"></svg></div>
+              <div class="chart-legend">
+                <span><i class="legend-line asset-line"></i>压力路径年末资产</span>
+                <span><i class="legend-line principal-line"></i>起点本金</span>
+                <span><i class="legend-dot turning-dot"></i>耗尽点</span>
+              </div>
+            </div>
+          </div>
+          <div class="chart-insight" id="stressInsight"></div>
+          <p class="panel-footnote">场景收益率与通胀为历史量级的示意性近似（非单一指数回放），本地计算；危机统一假设从 FIRE 第 1 年爆发，即顺序风险最不利的情形。提取率护栏为 Guyton-Klinger 规则：当年提取率超过初始提取率 20% 时自动减提 10%。三层水桶仅为结构拆算示意，页面不做账户切分。压力测试不构成投资建议。</p>
+        </section>
+
         <section class="panel monte-carlo-panel" id="montecarlo">
           <div class="section-heading">
             <div><p class="section-kicker">MONTE CARLO</p><h2>收益波动下的存续概率</h2></div>
@@ -369,11 +430,17 @@
               <button type="button" data-mc-profile="equity70">股 70 / 债 30</button>
               <button type="button" data-mc-profile="equity100">100% 股票</button>
               <button type="button" data-mc-profile="dividend">红利低波</button>
+              <span id="mcCustomProfileButtons" class="mc-custom-profile-buttons"></span>
+              <button type="button" id="mcAddProfile" class="mc-add-profile">＋ 自定义组合</button>
             </div>
-            <div class="fund-toggle-group" role="group" aria-label="模拟次数">
+            <div class="fund-toggle-group mc-runs-group" role="group" aria-label="模拟次数">
               <button type="button" data-mc-runs="2000">2,000 次</button>
               <button type="button" data-mc-runs="5000" class="active">5,000 次</button>
               <button type="button" data-mc-runs="10000">10,000 次</button>
+              <label class="mc-runs-custom">
+                <input id="mcRunsInput" type="number" min="500" max="20000" step="500" value="5000" aria-label="自定义模拟次数（500 到 20000）">
+                <span>次</span>
+              </label>
             </div>
           </div>
           <div class="fund-toggle-row">
@@ -386,17 +453,19 @@
           <div class="mc-holdings" id="mcHoldings" hidden>
             <div class="fund-scenario-title">当前组合持仓权重</div>
             <div class="table-wrap"><table id="mcHoldingsTable"></table></div>
-            <p class="fund-start-note">组合一为 2007-01-04～2026-11-09 长样本回测；组合二三列指数版（5–7 年基线 / 10 年 / 30 年）同为 2011-01-04～2026-11-09 样本；组合二两列 ETF 版（10 年 / 30 年）受 ETF 上市日限制同为 2023-06-13～2026-11-09 短样本。指数版与 ETF 版样本不同，胜率不可直接横比；所有版本均以人民币计价、月末再平衡，ETF 使用单位净值并计入分红再投资；微盘序列全收益口径依据第三方页面标注，待 Wind 原始数据核验。回测不代表未来，非市场预测或投资建议。</p>
+            <p class="fund-start-note" id="mcHoldingsNote">组合一为 2007-01-04～2026-11-09 长样本回测；组合二三列指数版（5–7 年基线 / 10 年 / 30 年）同为 2011-01-04～2026-11-09 样本；组合二两列 ETF 版（10 年 / 30 年）受 ETF 上市日限制同为 2023-06-13～2026-11-09 短样本。指数版与 ETF 版样本不同，胜率不可直接横比；所有版本均以人民币计价、月末再平衡，ETF 使用单位净值并计入分红再投资；微盘序列全收益口径依据第三方页面标注，待 Wind 原始数据核验。回测不代表未来，非市场预测或投资建议。</p>
           </div>
           <div class="fund-results mc-kpis" id="mcKpis"></div>
           <div class="mc-columns">
             <div>
               <div class="fund-scenario-title">期末资产分布</div>
               <div class="table-wrap"><table id="mcDistTable"></table></div>
+              <div class="mc-percentile-tip" id="mcPercentileTip"></div>
             </div>
             <div>
               <div class="fund-scenario-title">失败路径耗尽年份分布</div>
               <div class="chart-wrap mc-hist-wrap"><svg id="mcHistogram" role="img" aria-label="耗尽年份分布"></svg></div>
+              <p class="mc-hist-hint">点击柱形可查看该区间失败路径的典型现金流曲线与解读。</p>
             </div>
           </div>
           <div class="mc-attribution" id="mcAttribution" hidden>
@@ -433,17 +502,19 @@
             <button class="button button-ghost" id="runLeverAnalysis" type="button">计算提升方案</button>
           </div>
           <div class="fund-results lever-hero" id="leverHero"></div>
+          <div class="lever-combined" id="leverCombined" hidden></div>
           <div class="mc-columns">
             <div>
-              <div class="fund-scenario-title">单项调整的效果</div>
-              <div class="table-wrap"><table id="leverTable"></table></div>
+              <div class="fund-scenario-title">调整项 · 勾选组合（参数可改）</div>
+              <div class="lever-options" id="leverOptions"></div>
+              <p class="lever-options-hint">勾选任意多项可自由组合，互不干涉、效果叠加；修改输入框后自动按新参数完整重算（同一批随机路径，可复现）。</p>
             </div>
             <div>
-              <div class="fund-scenario-title">资产配置对比（当前本金）</div>
+              <div class="fund-scenario-title" id="profileTableTitle">资产配置对比（当前本金）</div>
               <div class="table-wrap"><table id="profileTable"></table></div>
             </div>
           </div>
-          <p class="panel-footnote">反推本金按每条随机路径求「刚好不耗尽」的最小本金，再取目标分位；结果受回测样本与模型假设限制，不构成投资建议。</p>
+          <p class="panel-footnote">勾选组合按同一批随机路径完整重算成功率与反推本金；反推本金按每条随机路径求「刚好不耗尽」的最小本金，再取目标分位；结果受回测样本与模型假设限制，不构成投资建议。</p>
         </section>
 
         <section class="panel workspace-panel" id="workspace">
@@ -502,6 +573,92 @@
     <div class="container"><div class="brand footer-brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M18.2 2.8c.7 5.1-3.8 6.8-3.8 10.5 0 1.8 1.1 3.1 2.7 3.8-.2-3.1 2.8-4.7 3.6-7.5 3.3 2.8 5.4 6.1 5.4 10.1 0 5.8-4.4 9.5-10.2 9.5S5.7 25.5 5.7 19.8c0-5.9 4.2-10.9 12.5-17Z" fill="currentColor"/></svg></span><span><strong>燃点</strong><small>让选择，建立在清晰之上。</small></span></div><p>所有计算均在浏览器本地完成 · 仅供财务规划参考</p></div>
   </footer>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="app.js?v=20261119i"></script>
+  <div class="mc-modal-overlay" id="dcaModalOverlay" hidden>
+    <div class="mc-modal" role="dialog" aria-modal="true" aria-labelledby="dcaModalTitle">
+      <div class="mc-modal-head">
+        <div>
+          <p class="section-kicker">DCA SCHEDULE</p>
+          <h3 id="dcaModalTitle">每月定投金额曲线</h3>
+        </div>
+        <button class="button button-ghost mc-modal-close" id="dcaModalClose" type="button" aria-label="关闭弹窗">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="mc-modal-kpis" id="dcaModalKpis"></div>
+      <div class="mc-modal-chart">
+        <div class="chart-wrap"><svg id="dcaModalChart" role="img" aria-label="每月定投金额阶梯曲线"></svg></div>
+        <div class="chart-legend">
+          <span><i class="legend-line asset-line"></i>每月定投金额</span>
+          <span id="dcaModalInflationLegend" hidden><i class="legend-line principal-line"></i>固定不调（对照）</span>
+        </div>
+      </div>
+      <div class="mc-modal-insight" id="dcaModalInsight"></div>
+      <p class="panel-footnote">定投随通胀每年年初上调一次，年内 12 个月保持不变；月末定投、按月复利。曲线展示名义金额，未做购买力折算。</p>
+    </div>
+  </div>
+  <div class="mc-modal-overlay" id="mcModalOverlay" hidden>
+    <div class="mc-modal" role="dialog" aria-modal="true" aria-labelledby="mcModalTitle">
+      <div class="mc-modal-head">
+        <div>
+          <p class="section-kicker">TYPICAL PATH</p>
+          <h3 id="mcModalTitle">典型失败路径现金流</h3>
+        </div>
+        <button class="button button-ghost mc-modal-close" id="mcModalClose" type="button" aria-label="关闭弹窗">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="mc-modal-kpis" id="mcModalKpis"></div>
+      <div class="mc-modal-chart">
+        <div class="chart-wrap"><svg id="mcModalChart" role="img" aria-label="典型失败路径资产曲线"></svg></div>
+        <div class="chart-legend">
+          <span><i class="legend-line asset-line"></i>年末资产</span>
+        <span><i class="legend-line expense-line"></i>实际提取</span>
+        <span><i class="legend-line principal-line"></i>起点本金</span>
+        <span id="mcModalFlexLegend" hidden><i class="legend-dot turning-dot"></i>支出弹性触发</span>
+        </div>
+      </div>
+      <div class="mc-modal-insight" id="mcModalInsight"></div>
+      <p class="panel-footnote">典型路径取该区间内所有失败样本逐年收益率的中位数，按与主现金流完全相同的引擎重放；它是区间画像而非任何一条真实路径，不构成投资建议。</p>
+    </div>
+  </div>
+  <div class="mc-modal-overlay" id="cpModalOverlay" hidden>
+    <div class="mc-modal cp-modal" role="dialog" aria-modal="true" aria-labelledby="cpModalTitle">
+      <div class="mc-modal-head">
+        <div>
+          <p class="section-kicker">CUSTOM PROFILE</p>
+          <h3 id="cpModalTitle">自定义组合</h3>
+        </div>
+        <button class="button button-ghost mc-modal-close" id="cpModalClose" type="button" aria-label="关闭弹窗">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <p class="cp-modal-lead">填入组合级回测数字即可新增组合，无需改代码：年化收益与年化波动率为必填项，直接决定模拟；其余为展示信息。若工具只给夏普没给波动率，可按 σ ≈ (CAGR − 无风险利率) ÷ 夏普 反推（无风险利率按工具口径，常见 0% 或 3%）。组合保存在本浏览器并随「导出方案 JSON」一起带走。</p>
+      <div class="cp-form">
+        <div class="cp-grid">
+          <label class="cp-field"><span>组合名称 *</span><input id="cpName" type="text" maxlength="24" placeholder="例如：我的红利增强"></label>
+          <label class="cp-field"><span>年化收益 CAGR % *</span><input id="cpCagr" type="number" step="0.01" min="-100" max="100" placeholder="例如 10.75"></label>
+          <label class="cp-field"><span>年化波动率 σ % *</span><input id="cpVol" type="number" step="0.01" min="0" max="100" placeholder="例如 10.74"></label>
+          <label class="cp-field"><span>最大回撤 %（选填）</span><input id="cpMdd" type="number" step="0.01" min="-100" max="0" placeholder="例如 -22.18"></label>
+          <label class="cp-field"><span>夏普比率（选填）</span><input id="cpSharpe" type="number" step="0.01" min="-5" max="10" placeholder="例如 0.91"></label>
+          <label class="cp-field"><span>回测区间（选填）</span><input id="cpPeriod" type="text" maxlength="60" placeholder="例如 2015-01-01 ~ 2026-11-09"></label>
+        </div>
+        <div class="cp-holdings-block">
+          <div class="cp-block-title">持仓权重（选填，仅作展示）</div>
+          <div id="cpHoldingsRows" class="cp-holdings-rows"></div>
+          <button type="button" id="cpAddHolding" class="button button-ghost cp-add-holding">＋ 添加一行持仓</button>
+        </div>
+        <div class="cp-actions">
+          <button type="button" id="cpSave" class="button button-primary">保存并启用</button>
+          <button type="button" id="cpCancel" class="button button-ghost">取消</button>
+        </div>
+      </div>
+      <div class="cp-saved-block" id="cpSavedBlock" hidden>
+        <div class="cp-block-title">已保存的自定义组合</div>
+        <div id="cpSavedList" class="cp-saved-list"></div>
+      </div>
+      <p class="panel-footnote">模拟只使用年化收益与年化波动率两个数字（对数正态年度路径），持仓表不参与计算；参数请来自你自己跑的组合级回测，非市场预测，不构成投资建议。</p>
+    </div>
+  </div>
+  <script type="module" src="app.js?v=20261123a"></script>
 </body>
 </html>
