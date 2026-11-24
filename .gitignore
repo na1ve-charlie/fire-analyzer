@@ -1,6 +1,7 @@
 # 测试与浏览器缓存
 fire-site/.chrome-*/
 fire-site/*.png
+fire-site/tests/*.png
 fire-site/node_modules/
 fire-site/package-lock.json
 
